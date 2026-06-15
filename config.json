@@ -1,0 +1,8 @@
+{
+  "latest_version": "1.0.0",
+  "allowed_domains": {
+    "ktfmultan.com": "Khawaja Textile Fabrics",
+    "3conlinestore.com": "3 Clothing"
+  },
+  "update_url": "https://anasriaz.com/woofly"
+}
