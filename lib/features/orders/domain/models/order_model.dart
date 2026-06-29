@@ -7,6 +7,8 @@ class OrderModel {
   final String customerNote;
   final String paymentMethodTitle;
   final String orderSource;
+  final String trackingNumber;
+  final String trackingCourier;
   final BillingAddress billing;
   final ShippingAddress shipping;
   final List<OrderItem> items;
@@ -20,6 +22,8 @@ class OrderModel {
     required this.customerNote,
     required this.paymentMethodTitle,
     required this.orderSource,
+    this.trackingNumber = '',
+    this.trackingCourier = '',
     required this.billing,
     required this.shipping,
     required this.items,
@@ -34,6 +38,8 @@ class OrderModel {
     String? customerNote,
     String? paymentMethodTitle,
     String? orderSource,
+    String? trackingNumber,
+    String? trackingCourier,
     BillingAddress? billing,
     ShippingAddress? shipping,
     List<OrderItem>? items,
@@ -47,6 +53,8 @@ class OrderModel {
       customerNote: customerNote ?? this.customerNote,
       paymentMethodTitle: paymentMethodTitle ?? this.paymentMethodTitle,
       orderSource: orderSource ?? this.orderSource,
+      trackingNumber: trackingNumber ?? this.trackingNumber,
+      trackingCourier: trackingCourier ?? this.trackingCourier,
       billing: billing ?? this.billing,
       shipping: shipping ?? this.shipping,
       items: items ?? this.items,
@@ -62,7 +70,10 @@ class OrderModel {
 
   factory OrderModel.fromJson(Map<String, dynamic> json) {
     String parsedSource = 'Unknown';
+    String tNumber = '';
+    String tCourier = '';
     if (json['meta_data'] != null && json['meta_data'] is List) {
+      String? customSource;
       String? origin;
       String? utmSource;
       String? sourceType;
@@ -73,7 +84,13 @@ class OrderModel {
         final value = meta['value']?.toString() ?? '';
         if (value.isEmpty) continue;
 
-        if (key == '_wc_order_attribution_origin') {
+        if (key == '_tracking_number') {
+          tNumber = value;
+        } else if (key == '_tracking_courier') {
+          tCourier = value;
+        } else if (key == '_custom_order_source') {
+          customSource = value;
+        } else if (key == '_wc_order_attribution_origin') {
           origin = value;
         } else if (key == 'utm_source' || key.endsWith('_utm_source') || key == 'source') {
           utmSource = value;
@@ -84,16 +101,22 @@ class OrderModel {
         }
       }
 
-      if (origin != null && origin.isNotEmpty) {
-        parsedSource = origin;
-      } else if (utmSource != null && utmSource.isNotEmpty && utmSource.toLowerCase() != '(direct)') {
-        String lower = utmSource.toLowerCase();
-        if (lower == 'ig' || lower == 'instagram') parsedSource = 'Instagram';
-        else if (lower == 'fb' || lower == 'facebook') parsedSource = 'Facebook';
-        else if (lower == 'google') parsedSource = 'Google';
-        else if (lower == 'tiktok') parsedSource = 'TikTok';
-        else if (lower == 'youtube') parsedSource = 'YouTube';
-        else parsedSource = utmSource;
+      String? rawSource = customSource ?? origin ?? utmSource;
+
+      if (rawSource != null && rawSource.isNotEmpty && rawSource.toLowerCase() != '(direct)' && rawSource.toLowerCase() != 'direct') {
+        String lower = rawSource.toLowerCase();
+        if (lower == 'ig' || lower.contains('instagram') || lower.contains('ig.me')) parsedSource = 'Instagram';
+        else if (lower == 'fb' || lower.contains('facebook') || lower.contains('fb.com') || lower.contains('fb.me')) parsedSource = 'Facebook';
+        else if (lower.contains('google')) parsedSource = 'Google';
+        else if (lower.contains('tiktok')) parsedSource = 'TikTok';
+        else if (lower.contains('youtube') || lower.contains('youtu')) parsedSource = 'YouTube';
+        else if (lower.contains('pinterest')) parsedSource = 'Pinterest';
+        else if (lower.contains('bing')) parsedSource = 'Bing';
+        else if (lower.contains('yahoo')) parsedSource = 'Yahoo';
+        else {
+          // Capitalize first letter of unknown source
+          parsedSource = rawSource[0].toUpperCase() + rawSource.substring(1);
+        }
       } else if (sourceType == 'typein' || sourceType == 'direct' || sourceType == 'admin') {
         parsedSource = sourceType == 'admin' ? 'Admin' : 'Direct';
       } else if (referrer != null && referrer.isNotEmpty) {
@@ -101,7 +124,7 @@ class OrderModel {
           parsedSource = 'Google';
         } else if (referrer.contains('facebook.com') || referrer.contains('fb.com') || referrer.contains('fb.me')) {
           parsedSource = 'Facebook';
-        } else if (referrer.contains('instagram.com')) {
+        } else if (referrer.contains('instagram.com') || referrer.contains('ig.me')) {
           parsedSource = 'Instagram';
         } else if (referrer.contains('tiktok.com')) {
           parsedSource = 'TikTok';
@@ -157,6 +180,8 @@ class OrderModel {
           ? json['payment_method_title']
           : (json['payment_method']?.toString().toUpperCase() ?? 'N/A'),
       orderSource: parsedSource,
+      trackingNumber: tNumber,
+      trackingCourier: tCourier,
       billing: BillingAddress.fromJson(json['billing'] ?? {}),
       shipping: ShippingAddress.fromJson(json['shipping'] ?? {}),
       items: (json['line_items'] as List)
@@ -170,6 +195,7 @@ class OrderItem {
   final int id;
   final String name;
   final int quantity;
+  final String price;
   final String total;
   final int productId;
   final int variationId;
@@ -181,6 +207,7 @@ class OrderItem {
     required this.id,
     required this.name,
     required this.quantity,
+    required this.price,
     required this.total,
     required this.productId,
     required this.variationId,
@@ -197,11 +224,23 @@ class OrderItem {
         .join(" | ");
   }
 
+  List<Map<String, String>> get variationAttributes {
+    if (metaData.isEmpty) return [];
+    return metaData
+        .where((m) => !m['key'].toString().startsWith('_'))
+        .map((m) => {
+              'key': m['display_key']?.toString() ?? '',
+              'value': m['display_value']?.toString() ?? ''
+            })
+        .toList();
+  }
+
   factory OrderItem.fromJson(Map<String, dynamic> json) {
     return OrderItem(
       id: json['id'],
       name: json['name'] ?? '',
       quantity: json['quantity'] ?? 0,
+      price: json['price']?.toString() ?? '0.00',
       total: json['total'] ?? '0.00',
       productId: json['product_id'] ?? 0,
       variationId: json['variation_id'] ?? 0,

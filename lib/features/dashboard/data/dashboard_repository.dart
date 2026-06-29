@@ -117,48 +117,59 @@ class DashboardRepository {
     }
   }
 
-  Future<List<TopProduct>> fetchTopSellingProducts() async {
+  Future<List<TopProduct>> fetchTopSellingProducts(String period) async {
     try {
+      final cacheKey = 'cache_top_sellers_$period';
+      final timeKey = 'cache_top_sellers_${period}_time';
       final now = DateTime.now();
-      final thirtyDaysAgo = now.subtract(const Duration(days: 30));
-      final String minDateStr = "${thirtyDaysAgo.year}-${thirtyDaysAgo.month.toString().padLeft(2, '0')}-${thirtyDaysAgo.day.toString().padLeft(2, '0')}T00:00:00";
 
-      // 1. Fetch live orders from the last 30 days (up to 100 recent) to bypass report caches
-      final ordersRes = await _dio.get('/wp-json/wc/v3/orders', queryParameters: {
-        'after': minDateStr,
-        'per_page': 100,
-      });
-
-      if (ordersRes.data == null || ordersRes.data is! List || (ordersRes.data as List).isEmpty) {
-        return [];
-      }
-
-      final orders = ordersRes.data as List;
-      final Map<int, int> productSales = {};
-
-      for (var order in orders) {
-        final status = order['status']?.toString() ?? '';
-        // Include pending so test orders immediately show up for users
-        if (!['cancelled', 'failed', 'refunded', 'trash'].contains(status)) {
-          if (order['line_items'] != null && order['line_items'] is List) {
-            for (var item in (order['line_items'] as List)) {
-              final productId = int.tryParse(item['product_id']?.toString() ?? '0') ?? 0;
-              final qty = int.tryParse(item['quantity']?.toString() ?? '0') ?? 0;
-              if (productId > 0 && qty > 0) {
-                productSales[productId] = (productSales[productId] ?? 0) + qty;
-              }
+      final lastUpdateStr = await _storage.read(key: timeKey);
+      if (lastUpdateStr != null) {
+        final lastUpdate = DateTime.tryParse(lastUpdateStr);
+        // If data is less than 24 hours old, return cached data
+        if (lastUpdate != null && now.difference(lastUpdate).inHours < 24) {
+          final cachedData = await _storage.read(key: cacheKey);
+          if (cachedData != null) {
+            try {
+              final List<dynamic> decoded = jsonDecode(cachedData);
+              return decoded.map((e) => TopProduct(
+                id: e['id'] as int,
+                name: e['name'] as String,
+                price: e['price'] as String,
+                imageUrl: e['imageUrl'] as String,
+                quantitySold: e['quantitySold'] as int,
+              )).toList();
+            } catch (e) {
+              // Ignore cache parse error and fetch fresh
+              print('Cache parse error: $e');
             }
           }
         }
       }
 
+      // 1. Fetch top sellers from WooCommerce Reports API for the given period
+      final reportsRes = await _dio.get('/wp-json/wc/v3/reports/top_sellers', queryParameters: {
+        'period': period,
+      });
+
+      if (reportsRes.data == null || reportsRes.data is! List || (reportsRes.data as List).isEmpty) {
+        return [];
+      }
+
+      final topSellers = reportsRes.data as List;
+      final Map<int, int> productSales = {};
+
+      for (var item in topSellers.take(5)) {
+        final productId = int.tryParse(item['product_id']?.toString() ?? '0') ?? 0;
+        final qty = int.tryParse(item['quantity']?.toString() ?? '0') ?? 0;
+        if (productId > 0 && qty > 0) {
+          productSales[productId] = qty;
+        }
+      }
+
       if (productSales.isEmpty) return [];
 
-      // Sort products by sales and take top 5
-      final sortedEntries = productSales.entries.toList()
-        ..sort((a, b) => b.value.compareTo(a.value));
-      final topEntries = sortedEntries.take(5).toList();
-      final productIds = topEntries.map((e) => e.key).toList();
+      final productIds = productSales.keys.toList();
 
       // 2. Fetch Full Product Details for those IDs
       final productsRes = await _dio.get('/wp-json/wc/v3/products', queryParameters: {
@@ -194,6 +205,17 @@ class DashboardRepository {
 
       // Sort by quantity sold just in case the /products endpoint returned them out of order
       topProducts.sort((a, b) => b.quantitySold.compareTo(a.quantitySold));
+
+      // Save to cache
+      final List<Map<String, dynamic>> cacheList = topProducts.map((p) => {
+        'id': p.id,
+        'name': p.name,
+        'price': p.price,
+        'imageUrl': p.imageUrl,
+        'quantitySold': p.quantitySold,
+      }).toList();
+      await _storage.write(key: cacheKey, value: jsonEncode(cacheList));
+      await _storage.write(key: timeKey, value: now.toIso8601String());
 
       return topProducts;
     } catch (e) {

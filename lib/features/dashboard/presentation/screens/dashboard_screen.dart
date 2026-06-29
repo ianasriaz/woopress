@@ -309,7 +309,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
   Future<void> _handleManualRefresh() async {
     setState(() => _isRefreshing = true);
     HapticFeedback.mediumImpact();
-    ref.invalidate(topProductsProvider);
+    ref.invalidate(topProductsCurrentMonthProvider);
+    ref.invalidate(topProductsLastMonthProvider);
     await ref.read(dashboardControllerProvider.notifier).refresh();
     if (mounted) setState(() => _isRefreshing = false);
   }
@@ -376,7 +377,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
             backgroundColor: Theme.of(context).colorScheme.surface,
             onRefresh: () async {
               HapticFeedback.mediumImpact();
-              ref.invalidate(topProductsProvider);
+              ref.invalidate(topProductsCurrentMonthProvider);
+              ref.invalidate(topProductsLastMonthProvider);
               await ref.read(dashboardControllerProvider.notifier).refresh();
             },
             child: statsAsync.when(
@@ -559,7 +561,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
                   const SizedBox(height: 12),
                   Row(
                     children: [
-                      Expanded(child: _buildStatCard("Visitors", stats.visitorsToday.toString(), LucideIcons.users, isAccent: true, isSmall: true)),
+                      Expanded(child: _buildStatCard("Unique Visitors", stats.visitorsToday.toString(), LucideIcons.users, isAccent: true, isSmall: true, showLive: true)),
                       const SizedBox(width: 12),
                       Expanded(child: _buildStatCard("Conv. Rate", "${stats.conversionRate.toStringAsFixed(1)}%", LucideIcons.activity, isAccent: true, isSmall: true)),
                     ],
@@ -568,14 +570,28 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
                 ],
               ),
           const SizedBox(height: 16),
-          // --- TOP PRODUCTS WIDGET HERE ---
-          const TopProductsWidget(),
+          // --- TOP PRODUCTS WIDGETS HERE ---
+          TopProductsWidget(
+            provider: topProductsCurrentMonthProvider,
+            title: "Top 5 Sellers (This Month, ${_getMonthName(DateTime.now())})",
+            emptyMessage: "No sales recorded this month.",
+          ),
+          const SizedBox(height: 24),
+          TopProductsWidget(
+            provider: topProductsLastMonthProvider,
+            title: "Top 5 Sellers (Last Month, ${_getMonthName(DateTime(DateTime.now().year, DateTime.now().month - 1, 1))})",
+            emptyMessage: "No sales recorded last month.",
+          ),
           const SizedBox(height: 40),
         ],
       ),
     );
   }
 
+  String _getMonthName(DateTime date) {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return months[date.month - 1];
+  }
 
   Widget _buildSectionHeader(String title) {
     return Text(
@@ -584,7 +600,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
     );
   }
 
-  Widget _buildStatCard(String label, String value, IconData icon, {bool isAccent = false, bool isSmall = false, bool isLarge = false}) {
+  Widget _buildStatCard(String label, String value, IconData icon, {bool isAccent = false, bool isSmall = false, bool isLarge = false, bool showLive = false}) {
     return Container(
       padding: EdgeInsets.symmetric(
         horizontal: isSmall ? 16 : 20,
@@ -601,14 +617,55 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                label.toUpperCase(),
-                style: TextStyle(
-                  color: isLarge ? Theme.of(context).colorScheme.onPrimary.withOpacity(0.5) : Theme.of(context).colorScheme.onSurface.withOpacity(0.3), 
-                  fontSize: 9, 
-                  fontWeight: FontWeight.w900, 
-                  letterSpacing: 1.0
-                ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: Text(
+                      label.toUpperCase(),
+                      style: TextStyle(
+                        color: isLarge ? Theme.of(context).colorScheme.onPrimary.withOpacity(0.5) : Theme.of(context).colorScheme.onSurface.withOpacity(0.3), 
+                        fontSize: 9, 
+                        fontWeight: FontWeight.w900, 
+                        letterSpacing: 1.0
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  if (showLive) ...[
+                    const SizedBox(width: 4),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF34C759).withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 3,
+                            height: 3,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF34C759),
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          const SizedBox(width: 3),
+                          const Text(
+                            "TODAY",
+                            style: TextStyle(
+                              color: Color(0xFF34C759),
+                              fontSize: 6,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
               ),
               Icon(icon, size: 14, color: isLarge ? Theme.of(context).colorScheme.onPrimary : (isAccent ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurface.withOpacity(0.1))),
             ],

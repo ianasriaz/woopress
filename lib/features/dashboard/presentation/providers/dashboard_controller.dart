@@ -37,7 +37,12 @@ final dashboardControllerProvider = AsyncNotifierProvider<DashboardController, S
   return DashboardController();
 });
 
-final topProductsProvider = FutureProvider<List<TopProduct>>((ref) async {
+final topProductsCurrentMonthProvider = FutureProvider<List<TopProduct>>((ref) async {
   final repo = ref.watch(dashboardRepositoryProvider);
-  return repo.fetchTopSellingProducts();
+  return repo.fetchTopSellingProducts('month');
+});
+
+final topProductsLastMonthProvider = FutureProvider<List<TopProduct>>((ref) async {
+  final repo = ref.watch(dashboardRepositoryProvider);
+  return repo.fetchTopSellingProducts('last_month');
 });

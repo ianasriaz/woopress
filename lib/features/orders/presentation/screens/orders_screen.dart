@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../providers/orders_controller.dart';
 import '../../domain/models/order_model.dart';
 import '../../../inventory/data/inventory_repository.dart';
@@ -292,22 +293,28 @@ class _OrderDetailsSheet extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildSectionHeader(context, "CUSTOMER INFO"),
-                  _buildCustomerTile(context, LucideIcons.user, order.customerName),
-                  if (order.billing.phone.isNotEmpty) 
-                    Row(
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                      border: Border.all(color: Theme.of(context).dividerColor),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Column(
                       children: [
-                        Expanded(
-                          child: _buildInteractiveTile(context, LucideIcons.phone, order.billing.phone, () => launchUrl(Uri.parse("tel:${order.billing.phone}"))),
-                        ),
-                        IconButton(
-                          icon: _buildWhatsAppIcon(size: 20),
-                          onPressed: () => _launchWhatsApp(order.billing.phone, order.id.toString(), order.customerName),
-                          tooltip: 'WhatsApp',
-                        ),
+                        _buildCustomerTableRow(context, "NAME", order.customerName),
+                        if (order.billing.phone.isNotEmpty) ...[
+                          Divider(color: Theme.of(context).dividerColor.withOpacity(0.5), height: 1),
+                          _buildCustomerTableRow(context, "PHONE", order.billing.phone, onTap: () => launchUrl(Uri.parse("tel:${order.billing.phone}"))),
+                        ],
+                        if (order.billing.email.isNotEmpty) ...[
+                          Divider(color: Theme.of(context).dividerColor.withOpacity(0.5), height: 1),
+                          _buildCustomerTableRow(context, "EMAIL", order.billing.email, onTap: () => launchUrl(Uri.parse("mailto:${order.billing.email}"))),
+                        ],
                       ],
                     ),
-                  if (order.billing.email.isNotEmpty)
-                    _buildInteractiveTile(context, LucideIcons.mail, order.billing.email, () => launchUrl(Uri.parse("mailto:${order.billing.email}"))),
+                  ),
                   
                   const SizedBox(height: 32),
                   _buildSectionHeader(context, "ORDER ADDRESS"),
@@ -325,10 +332,23 @@ class _OrderDetailsSheet extends StatelessWidget {
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(16),
-                      color: Theme.of(context).colorScheme.surfaceVariant,
-                      child: Text(
-                        order.customerNote,
-                        style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7), fontSize: 13, fontWeight: FontWeight.w600, fontStyle: FontStyle.italic),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.withOpacity(0.1),
+                        border: Border.all(color: Colors.amber.withOpacity(0.5)),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(LucideIcons.alertCircle, color: Colors.amber, size: 20),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              order.customerNote,
+                              style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 13, fontWeight: FontWeight.w700, fontStyle: FontStyle.italic),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                     const SizedBox(height: 32),
@@ -336,7 +356,7 @@ class _OrderDetailsSheet extends StatelessWidget {
 
                   _buildSectionHeader(context, "SUMMARY"),
                   _buildSummaryRow(context, "Payment", order.paymentMethodTitle),
-                  _buildSummaryRow(context, "Source", order.orderSource),
+                  _buildSummaryRow(context, "Source", SourceBadge(source: order.orderSource)),
                   _buildSummaryRow(context, "Subtotal", "Rs. ${order.total}"),
                   Divider(color: Theme.of(context).dividerColor, height: 32),
                   Row(
@@ -369,31 +389,40 @@ class _OrderDetailsSheet extends StatelessWidget {
     );
   }
 
-  Widget _buildCustomerTile(BuildContext context, IconData icon, String value) {
+  Widget _buildCustomerTableRow(BuildContext context, String label, String value, {VoidCallback? onTap}) {
+    if (value.isEmpty) return const SizedBox.shrink();
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Icon(icon, size: 16, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5)),
-          const SizedBox(width: 12),
-          Text(value, style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 16, fontWeight: FontWeight.w700)),
+          SizedBox(
+            width: 60,
+            child: Text(label, style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5), fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+          ),
+          Expanded(
+            child: GestureDetector(
+              onTap: onTap,
+              child: Text(
+                value, 
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface, 
+                  fontSize: 14, 
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+          IconButton(
+            icon: Icon(LucideIcons.copy, size: 16, color: Theme.of(context).colorScheme.primary),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: value));
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$label copied')));
+            },
+          ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildInteractiveTile(BuildContext context, IconData icon, String value, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: Row(
-          children: [
-            Icon(icon, size: 16, color: Theme.of(context).colorScheme.onSurface),
-            const SizedBox(width: 12),
-            Text(value, style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 15, fontWeight: FontWeight.w600, decoration: TextDecoration.underline)),
-          ],
-        ),
       ),
     );
   }
@@ -402,10 +431,29 @@ class _OrderDetailsSheet extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       width: double.infinity,
-      decoration: BoxDecoration(color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3), border: Border.all(color: Theme.of(context).dividerColor)),
-      child: Text(
-        address,
-        style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7), fontSize: 14, height: 1.5, fontWeight: FontWeight.w500),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+        border: Border.all(color: Theme.of(context).dividerColor),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Text(
+              address,
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.8), fontSize: 14, height: 1.5, fontWeight: FontWeight.w500),
+            ),
+          ),
+          IconButton(
+            icon: Icon(LucideIcons.copy, size: 18, color: Theme.of(context).colorScheme.primary),
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: address));
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Address copied to clipboard')));
+            },
+            tooltip: 'Copy Address',
+          ),
+        ],
       ),
     );
   }
@@ -429,41 +477,68 @@ class _OrderDetailsSheet extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(item.name, style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14, fontWeight: FontWeight.w800)),
-                if (item.variationInfo.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(item.variationInfo, style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4), fontSize: 10, fontWeight: FontWeight.w700)),
+                if (item.variationAttributes.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: item.variationAttributes.map((attr) {
+                      return Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: Theme.of(context).colorScheme.primary.withOpacity(0.2)),
+                        ),
+                        child: Text(
+                          "${attr['key']}: ${attr['value']}",
+                          style: TextStyle(color: Theme.of(context).colorScheme.primary, fontSize: 11, fontWeight: FontWeight.w800),
+                        ),
+                      );
+                    }).toList(),
+                  ),
                 ],
-                const SizedBox(height: 4),
+                const SizedBox(height: 8),
                 Row(
                   children: [
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary.withOpacity(0.1), borderRadius: BorderRadius.circular(2)),
-                      child: Text("${item.quantity}x", style: TextStyle(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.w900, fontSize: 10)),
+                      decoration: BoxDecoration(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
+                      child: Text("${item.quantity}x", style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w900, fontSize: 11)),
                     ),
                     const SizedBox(width: 8),
                     if (item.sku.isNotEmpty)
-                      Text("SKU: ${item.sku}", style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.2), fontSize: 9, fontWeight: FontWeight.w600)),
+                      Text("SKU: ${item.sku}", style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4), fontSize: 10, fontWeight: FontWeight.w600)),
                   ],
                 ),
               ],
             ),
           ),
           const SizedBox(width: 12),
-          Text("Rs. ${item.total}", style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14, fontWeight: FontWeight.w900)),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text("Rs. ${item.total}", style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14, fontWeight: FontWeight.w900)),
+              if (item.quantity > 1 && item.price.isNotEmpty && item.price != '0.00')
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text("Rs. ${item.price} each", style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5), fontSize: 10, fontWeight: FontWeight.w700)),
+                ),
+            ],
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildSummaryRow(BuildContext context, String label, String value) {
+  Widget _buildSummaryRow(BuildContext context, String label, dynamic value) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label, style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3), fontSize: 13, fontWeight: FontWeight.w600)),
-          Text(value, style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7), fontSize: 13, fontWeight: FontWeight.w800)),
+          if (value is Widget) value else Text(value.toString(), style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7), fontSize: 13, fontWeight: FontWeight.w800)),
         ],
       ),
     );
@@ -583,17 +658,6 @@ class _OrderCard extends ConsumerWidget {
   final OrderModel order;
   const _OrderCard({required this.order});
 
-  IconData _getSourceIcon(String source) {
-    String lower = source.toLowerCase();
-    if (lower == 'facebook') return LucideIcons.facebook;
-    if (lower == 'instagram') return LucideIcons.instagram;
-    if (lower == 'youtube') return LucideIcons.youtube;
-    if (lower == 'tiktok') return LucideIcons.music;
-    if (lower == 'twitter' || lower == 'x') return LucideIcons.twitter;
-    if (lower == 'google') return LucideIcons.chrome;
-    return LucideIcons.globe;
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Container(
@@ -607,44 +671,23 @@ class _OrderCard extends ConsumerWidget {
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: Row(
-                  children: [
-                    Text(
-                      "#${order.id}",
-                      style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 18, fontWeight: FontWeight.w900),
-                    ),
-                    const SizedBox(width: 8),
-                    Flexible(
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(_getSourceIcon(order.orderSource), size: 10, color: Theme.of(context).colorScheme.primary),
-                            const SizedBox(width: 4),
-                            Flexible(
-                              child: Text(
-                                order.orderSource,
-                                style: TextStyle(color: Theme.of(context).colorScheme.primary, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 0.5),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  "#${order.id}",
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 18, fontWeight: FontWeight.w900),
                 ),
               ),
               const SizedBox(width: 8),
-              _StatusChip(status: order.status),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SourceBadge(source: order.orderSource, isSmall: true),
+                  const SizedBox(width: 8),
+                  _StatusChip(status: order.status),
+                ],
+              ),
             ],
           ),
           const SizedBox(height: 12),
@@ -677,6 +720,38 @@ class _OrderCard extends ConsumerWidget {
             "${order.items.length} items • ${order.total} ${order.currency}",
             style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5), fontSize: 13, fontWeight: FontWeight.w600),
           ),
+          if (order.trackingNumber.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.1)),
+              ),
+              child: Row(
+                children: [
+                  Icon(LucideIcons.package, size: 14, color: Theme.of(context).colorScheme.primary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      order.trackingCourier.isNotEmpty ? "${order.trackingCourier}: ${order.trackingNumber}" : "Tracking: ${order.trackingNumber}",
+                      style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 12, fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(LucideIcons.copy, size: 14, color: Theme.of(context).colorScheme.primary),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: order.trackingNumber));
+                      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Tracking number copied')));
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           Row(
             children: [
@@ -689,22 +764,26 @@ class _OrderCard extends ConsumerWidget {
                   child: Container(
                     height: 48,
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.primary,
+                      color: order.status == 'completed' ? const Color(0xFF34C759) : Theme.of(context).colorScheme.primary,
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         ref.watch(ordersControllerProvider).value?.updatingOrderIds.contains(order.id) ?? false
-                          ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Theme.of(context).colorScheme.onPrimary, strokeWidth: 2))
+                          ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                           : Row(
                               children: [
-                                Icon(LucideIcons.edit3, color: Theme.of(context).colorScheme.onPrimary, size: 16),
+                                Icon(
+                                  order.status == 'completed' ? LucideIcons.checkCircle : LucideIcons.edit3, 
+                                  color: Colors.white, 
+                                  size: 16
+                                ),
                                 const SizedBox(width: 12),
                                 Text(
-                                  "UPDATE STATUS",
-                                  style: TextStyle(
-                                    color: Theme.of(context).colorScheme.onPrimary,
+                                  order.status == 'completed' ? "SHIPPED" : "UPDATE STATUS",
+                                  style: const TextStyle(
+                                    color: Colors.white,
                                     fontSize: 12,
                                     fontWeight: FontWeight.w900,
                                     letterSpacing: 1.0,
@@ -717,22 +796,40 @@ class _OrderCard extends ConsumerWidget {
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
-              GestureDetector(
-                onTap: () => _launchWhatsApp(order.billing.phone, order.id.toString(), order.customerName),
-                child: Container(
-                  height: 48,
-                  width: 48,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surface,
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: const Color(0xFF25D366).withOpacity(0.3)),
-                  ),
-                  child: Center(
-                    child: _buildWhatsAppIcon(size: 20),
+              if (order.billing.phone.isNotEmpty) ...[
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: () => launchUrl(Uri.parse("tel:${order.billing.phone}")),
+                  child: Container(
+                    height: 48,
+                    width: 48,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surface,
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: Theme.of(context).colorScheme.primary.withOpacity(0.3)),
+                    ),
+                    child: Center(
+                      child: Icon(LucideIcons.phone, size: 20, color: Theme.of(context).colorScheme.primary),
+                    ),
                   ),
                 ),
-              ),
+                const SizedBox(width: 8),
+                GestureDetector(
+                  onTap: () => _launchWhatsApp(order.billing.phone, order.id.toString(), order.customerName),
+                  child: Container(
+                    height: 48,
+                    width: 48,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surface,
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: const Color(0xFF25D366).withOpacity(0.3)),
+                    ),
+                    child: Center(
+                      child: const FaIcon(FontAwesomeIcons.whatsapp, size: 20, color: Color(0xFF25D366)),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ],
@@ -1005,37 +1102,6 @@ class _StatusChip extends StatelessWidget {
   }
 }
 
-Widget _buildWhatsAppIcon({double size = 20}) {
-  return SizedBox(
-    width: size,
-    height: size,
-    child: Stack(
-      clipBehavior: Clip.none,
-      children: [
-        Icon(
-          Icons.chat_bubble, 
-          color: const Color(0xFF25D366), 
-          size: size,
-        ),
-        Positioned(
-          left: size * 0.15,
-          top: size * 0.1,
-          right: size * 0.15,
-          bottom: size * 0.2,
-          child: Transform.rotate(
-            angle: -0.785398, // -45 degrees in radians
-            child: Icon(
-              Icons.phone, 
-              color: Colors.white, 
-              size: size * 0.5,
-            ),
-          ),
-        ),
-      ],
-    ),
-  );
-}
-
 void _launchWhatsApp(String phone, String orderId, String name) async {
   // Remove all non-digit characters
   String sanitizedPhone = phone.replaceAll(RegExp(r'\D'), '');
@@ -1066,5 +1132,94 @@ void _launchWhatsApp(String phone, String orderId, String name) async {
   
   if (await canLaunchUrl(Uri.parse(url))) {
     await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+  }
+}
+
+class SourceBadge extends StatelessWidget {
+  final String source;
+  final bool isSmall;
+
+  const SourceBadge({super.key, required this.source, this.isSmall = false});
+
+  @override
+  Widget build(BuildContext context) {
+    dynamic icon;
+    bool isFa = false;
+    Color color;
+
+    String lower = source.toLowerCase();
+    if (lower == 'facebook') {
+      icon = FontAwesomeIcons.facebook;
+      isFa = true;
+      color = const Color(0xFF1877F2);
+    } else if (lower == 'instagram') {
+      icon = FontAwesomeIcons.instagram;
+      isFa = true;
+      color = const Color(0xFFE1306C);
+    } else if (lower == 'google') {
+      icon = FontAwesomeIcons.google;
+      isFa = true;
+      color = const Color(0xFFDB4437);
+    } else if (lower == 'tiktok') {
+      icon = FontAwesomeIcons.tiktok;
+      isFa = true;
+      color = Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black;
+    } else if (lower == 'youtube') {
+      icon = FontAwesomeIcons.youtube;
+      isFa = true;
+      color = const Color(0xFFFF0000);
+    } else if (lower == 'pinterest') {
+      icon = FontAwesomeIcons.pinterest;
+      isFa = true;
+      color = const Color(0xFFE60023);
+    } else if (lower == 'twitter' || lower == 'x') {
+      icon = FontAwesomeIcons.xTwitter;
+      isFa = true;
+      color = Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black;
+    } else if (lower == 'bing' || lower == 'yahoo' || lower == 'organic') {
+      icon = LucideIcons.search;
+      color = Theme.of(context).colorScheme.primary;
+    } else if (lower == 'direct' || lower == 'typein' || lower == 'admin') {
+      icon = LucideIcons.mousePointerClick;
+      color = Theme.of(context).colorScheme.primary;
+    } else {
+      icon = LucideIcons.link;
+      color = Theme.of(context).colorScheme.onSurface.withOpacity(0.5);
+    }
+
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: isSmall ? 8 : 10, vertical: isSmall ? 4 : 6),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(isSmall ? 4 : 6),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          if (icon != null) ...[
+            if (isFa)
+              FaIcon(icon, size: isSmall ? 10 : 14, color: color)
+            else
+              Icon(icon, size: isSmall ? 10 : 14, color: color),
+            SizedBox(width: isSmall ? 4 : 8),
+          ],
+          Flexible(
+            child: Text(
+              source,
+              style: TextStyle(
+                color: color, 
+                fontSize: isSmall ? 10 : 13, 
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0.5,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

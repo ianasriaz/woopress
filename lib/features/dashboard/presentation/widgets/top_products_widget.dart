@@ -6,11 +6,20 @@ import '../../domain/models/top_product.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 class TopProductsWidget extends ConsumerWidget {
-  const TopProductsWidget({super.key});
+  final FutureProvider<List<TopProduct>> provider;
+  final String title;
+  final String emptyMessage;
+
+  const TopProductsWidget({
+    super.key,
+    required this.provider,
+    required this.title,
+    required this.emptyMessage,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final topProductsAsync = ref.watch(topProductsProvider);
+    final topProductsAsync = ref.watch(provider);
 
     return topProductsAsync.when(
       data: (products) {
@@ -24,7 +33,7 @@ class TopProductsWidget extends ConsumerWidget {
                   Icon(LucideIcons.trendingUp, size: 20, color: Theme.of(context).colorScheme.primary),
                   const SizedBox(width: 8),
                   Text(
-                    "Top 5 Sellers (Last 30 Days)",
+                    title,
                     style: TextStyle(
                       color: Theme.of(context).colorScheme.onSurface,
                       fontSize: 18,
@@ -52,7 +61,7 @@ class TopProductsWidget extends ConsumerWidget {
                           Icon(LucideIcons.packageOpen, size: 32, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.2)),
                           const SizedBox(height: 12),
                           Text(
-                            "No sales recorded in the last 30 days.",
+                            emptyMessage,
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
