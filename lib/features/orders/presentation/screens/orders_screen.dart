@@ -8,9 +8,22 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../providers/orders_controller.dart';
 import '../../domain/models/order_model.dart';
 import '../../../inventory/data/inventory_repository.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 
 import '../../../../core/widgets/global_error_view.dart';
 import '../../../../core/widgets/empty_state_view.dart';
+import '../../../../core/database/database_helper.dart';
+
+final connectivityStreamProvider = StreamProvider<List<ConnectivityResult>>((ref) {
+  return Connectivity().onConnectivityChanged;
+});
+
+final pendingSyncProvider = StreamProvider.autoDispose<int>((ref) async* {
+  while (true) {
+    yield await DatabaseHelper.instance.getPendingSyncCount();
+    await Future.delayed(const Duration(seconds: 3));
+  }
+});
 
 class OrdersScreen extends ConsumerStatefulWidget {
   final int? openOrderId;
@@ -71,6 +84,55 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
         elevation: 0,
         iconTheme: IconThemeData(color: Theme.of(context).colorScheme.onSurface),
         actions: [
+          Consumer(
+            builder: (context, ref, child) {
+              final connectivity = ref.watch(connectivityStreamProvider);
+              final isOffline = connectivity.when(
+                data: (results) => results.contains(ConnectivityResult.none),
+                loading: () => false,
+                error: (_, __) => false,
+              );
+              
+              final pendingSyncs = ref.watch(pendingSyncProvider).value ?? 0;
+
+              return Row(
+                children: [
+                  if (pendingSyncs > 0)
+                    Container(
+                      margin: const EdgeInsets.only(right: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.shade100,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(LucideIcons.uploadCloud, size: 14, color: Colors.orange.shade800),
+                          const SizedBox(width: 4),
+                          Text('$pendingSyncs', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.orange.shade800)),
+                        ],
+                      ),
+                    ),
+                  if (isOffline)
+                    Container(
+                      margin: const EdgeInsets.only(right: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade100,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(LucideIcons.wifiOff, size: 14, color: Colors.red.shade800),
+                          const SizedBox(width: 4),
+                          Text('Offline', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.red.shade800)),
+                        ],
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
             child: _isRefreshing 

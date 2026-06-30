@@ -19,6 +19,25 @@ class DashboardRepository {
   DashboardRepository(this._dio, this._storage);
 
   Future<StoreStats> fetchStoreStats({bool forceRefresh = false}) async {
+    StoreStats? cachedStats;
+    try {
+      final cachedData = await _storage.read(key: 'optimistic_stats');
+      if (cachedData != null) {
+        final decoded = jsonDecode(cachedData);
+        cachedStats = StoreStats(
+          todayRevenue: decoded['todayRevenue']?.toString() ?? '0.00',
+          monthlyRevenue: decoded['monthlyRevenue']?.toString() ?? '0.00',
+          yearlyRevenue: decoded['yearlyRevenue']?.toString() ?? '0.00',
+          ordersToday: int.tryParse(decoded['ordersToday']?.toString() ?? '0') ?? 0,
+          itemsSold: int.tryParse(decoded['itemsSold']?.toString() ?? '0') ?? 0,
+          visitorsToday: int.tryParse(decoded['visitorsToday']?.toString() ?? '0') ?? 0,
+          conversionRate: double.tryParse(decoded['conversionRate']?.toString() ?? '0') ?? 0.0,
+        );
+      }
+    } catch (e) {
+      print('Stats cache read error: $e');
+    }
+
     try {
       final now = DateTime.now();
       
@@ -113,7 +132,11 @@ class DashboardRepository {
       return stats;
 
     } catch (e) {
-      throw Exception('Failed to fetch live stats: $e');
+      if (cachedStats != null) {
+        print('Network offline, returning cached stats');
+        return cachedStats;
+      }
+      throw Exception('Failed to fetch live stats and no cache available: $e');
     }
   }
 
@@ -123,27 +146,29 @@ class DashboardRepository {
       final timeKey = 'cache_top_sellers_${period}_time';
       final now = DateTime.now();
 
+      List<TopProduct>? cachedProducts;
+      final cachedData = await _storage.read(key: cacheKey);
+      if (cachedData != null) {
+        try {
+          final List<dynamic> decoded = jsonDecode(cachedData);
+          cachedProducts = decoded.map((e) => TopProduct(
+            id: e['id'] as int,
+            name: e['name'] as String,
+            price: e['price'] as String,
+            imageUrl: e['imageUrl'] as String,
+            quantitySold: e['quantitySold'] as int,
+          )).toList();
+        } catch (e) {
+          print('Top products cache read error: $e');
+        }
+      }
+
       final lastUpdateStr = await _storage.read(key: timeKey);
-      if (lastUpdateStr != null) {
+      if (lastUpdateStr != null && cachedProducts != null && !forceRefresh) {
         final lastUpdate = DateTime.tryParse(lastUpdateStr);
-        // If data is less than 24 hours old, return cached data
+        // If data is less than 24 hours old, return cached data immediately
         if (lastUpdate != null && now.difference(lastUpdate).inHours < 24) {
-          final cachedData = await _storage.read(key: cacheKey);
-          if (cachedData != null) {
-            try {
-              final List<dynamic> decoded = jsonDecode(cachedData);
-              return decoded.map((e) => TopProduct(
-                id: e['id'] as int,
-                name: e['name'] as String,
-                price: e['price'] as String,
-                imageUrl: e['imageUrl'] as String,
-                quantitySold: e['quantitySold'] as int,
-              )).toList();
-            } catch (e) {
-              // Ignore cache parse error and fetch fresh
-              print('Cache parse error: $e');
-            }
-          }
+          return cachedProducts;
         }
       }
 
@@ -218,8 +243,24 @@ class DashboardRepository {
       await _storage.write(key: timeKey, value: now.toIso8601String());
 
       return topProducts;
+
     } catch (e) {
-      print('Error fetching top products: $e');
+      final cacheKey = 'cache_top_sellers_$period';
+      final cachedData = await _storage.read(key: cacheKey);
+      if (cachedData != null) {
+        try {
+          print('Network offline, returning stale top products cache');
+          final List<dynamic> decoded = jsonDecode(cachedData);
+          return decoded.map((e) => TopProduct(
+            id: e['id'] as int,
+            name: e['name'] as String,
+            price: e['price'] as String,
+            imageUrl: e['imageUrl'] as String,
+            quantitySold: e['quantitySold'] as int,
+          )).toList();
+        } catch (_) {}
+      }
+      print('Error fetching top sellers: $e');
       return [];
     }
   }

@@ -12,6 +12,7 @@ import 'features/notifications/data/fcm_service.dart';
 import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'features/notifications/domain/models/notification_model.dart';
+import 'core/network/sync_service.dart';
 
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -75,6 +76,9 @@ void main() async {
   if (!kIsWeb) {
     container.read(fcmServiceProvider).initialize();
   }
+
+  // Initialize Background Sync Engine for offline support
+  container.read(syncServiceProvider).startListening();
 
   runApp(
     UncontrolledProviderScope(

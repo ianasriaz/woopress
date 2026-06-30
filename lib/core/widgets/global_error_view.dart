@@ -8,8 +8,8 @@ class GlobalErrorView extends StatelessWidget {
 
   const GlobalErrorView({
     super.key,
-    this.title = "CONNECTION LOST",
-    this.message = "We couldn't reach your store. Please check your internet or try again later.",
+    this.title = "YOU ARE OFFLINE",
+    this.message = "No cached data found for this screen. Reconnect to fetch fresh data, and then you can seamlessly work offline!",
     required this.onRetry,
   });
 
@@ -61,7 +61,7 @@ class GlobalErrorView extends StatelessWidget {
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
-                  "RETRY CONNECTION",
+                  "TRY AGAIN",
                   style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1.5),
                 ),
               ),
