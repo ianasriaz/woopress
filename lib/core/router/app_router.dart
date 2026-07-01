@@ -16,8 +16,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       final isAuth = authState == AuthState.authenticated;
       final isNeedsGatekeeper = authState == AuthState.needsGatekeeper;
       final isUnauthenticated = authState == AuthState.unauthenticated;
-      final isUninitialized = authState == AuthState.uninitialized || authState == AuthState.loading;
-      final isError = authState == AuthState.error;
+      final isUninitialized = authState == AuthState.uninitialized;
 
       final isGatekeeperRoute = state.matchedLocation == '/gatekeeper';
       final isAuthRoute = state.matchedLocation == '/auth';
@@ -40,11 +39,6 @@ final routerProvider = Provider<GoRouter>((ref) {
         if (isGatekeeperRoute || isAuthRoute) {
           return '/dashboard';
         }
-      }
-
-      // If there is an auth error, send them to auth
-      if (isError && !isAuthRoute) {
-          return '/auth';
       }
 
       return null;

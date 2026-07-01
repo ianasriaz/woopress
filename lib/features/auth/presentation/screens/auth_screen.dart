@@ -18,6 +18,10 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
   final TextEditingController _urlController = TextEditingController();
   final TextEditingController _keyController = TextEditingController();
   final TextEditingController _secretController = TextEditingController();
+  
+  bool _isLoading = false;
+  String? _errorMessage;
+
   @override
   void dispose() {
     _urlController.dispose();
@@ -32,39 +36,37 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
     final secret = _secretController.text.trim();
 
     if (url.isEmpty || key.isEmpty || secret.isEmpty) {
-      ErrorPopup.show(
-        context, 
-        title: "MISSING FIELDS", 
-        message: "Please enter the Store URL, Consumer Key, and Consumer Secret.",
-      );
+      setState(() {
+        _errorMessage = "Please enter all required fields.";
+      });
       return;
     }
 
-    final success = await ref.read(authNotifierProvider.notifier).authenticate(url, key, secret);
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    final error = await ref.read(authNotifierProvider.notifier).authenticate(url, key, secret);
     
-    if (success && mounted) {
-      HapticFeedback.heavyImpact();
-      // AuthNotifier now handles the state transition, so GoRouter will instantly redirect.
+    if (mounted) {
+      if (error == null) {
+        HapticFeedback.heavyImpact();
+        // Router will intercept the state change and route to /dashboard automatically
+      } else {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = error;
+        });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    ref.listen<AuthState>(authNotifierProvider, (previous, next) {
-      if (next == AuthState.authenticated) {
-        HapticFeedback.heavyImpact();
-        // GoRouter will automatically intercept the state change and route to /dashboard
-      } else if (next == AuthState.error) {
-        ErrorPopup.show(
-          context, 
-          title: "CONNECTION FAILED", 
-          message: "We couldn't connect to your store. Please double-check your URL and make sure your Consumer Key and Secret are correct.",
-        );
-      }
-    });
-
+    // The global state is only read once to determine if it is somehow loading from boot.
     final authState = ref.watch(authNotifierProvider);
-    final isVerifying = authState == AuthState.loading || authState == AuthState.authenticated;
+    final isVerifying = _isLoading || authState == AuthState.authenticated;
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
@@ -157,6 +159,18 @@ class _AuthScreenState extends ConsumerState<AuthScreen> {
                     _buildInputLabel("APP PASSWORD OR CONSUMER SECRET"),
                     const SizedBox(height: 8),
                     _buildTextField(_secretController, 'xxxx xxxx xxxx ... or cs_...', isVerifying, true),
+                    if (_errorMessage != null) ...[
+                      const SizedBox(height: 16),
+                      Text(
+                        _errorMessage!,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 32),
                     GestureDetector(
                       onTap: isVerifying ? null : _submit,

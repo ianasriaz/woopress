@@ -105,7 +105,7 @@ class AuthRepository {
   }
 }
 
-enum AuthState { uninitialized, needsGatekeeper, unauthenticated, authenticated, loading, error }
+enum AuthState { uninitialized, needsGatekeeper, unauthenticated, authenticated }
 
 class AuthNotifier extends Notifier<AuthState> {
   StreamSubscription? _gatekeeperSub;
@@ -125,7 +125,6 @@ class AuthNotifier extends Notifier<AuthState> {
   // Removed Firebase _setupGatekeeperListener
 
   Future<void> checkExistingCredentials() async {
-    state = AuthState.loading;
     final repo = ref.read(authRepositoryProvider);
     final hasCreds = await repo.hasCredentials();
     
@@ -157,8 +156,7 @@ class AuthNotifier extends Notifier<AuthState> {
     state = AuthState.unauthenticated;
   }
 
-  Future<bool> authenticate(String url, String key, String secret) async {
-    state = AuthState.loading;
+  Future<String?> authenticate(String url, String key, String secret) async {
     final repo = ref.read(authRepositoryProvider);
 
     try {
@@ -185,15 +183,13 @@ class AuthNotifier extends Notifier<AuthState> {
 
         ref.read(dashboardControllerProvider.notifier).refresh();
         state = AuthState.authenticated;
-        return true;
+        return null; // Success
       } else {
-        state = AuthState.error;
-        return false;
+        return "Could not connect. Please check your URL and API Keys.";
       }
     } catch (e) {
       print("Authentication error: $e");
-      state = AuthState.error;
-      return false;
+      return "An unexpected error occurred. Please try again.";
     }
   }
 

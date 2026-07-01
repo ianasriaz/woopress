@@ -66,8 +66,12 @@ class _GatekeeperScreenState extends ConsumerState<GatekeeperScreen> with Widget
     final savedDomain = await storage.read(key: 'store_domain');
     
     if (savedDomain != null && savedDomain.isNotEmpty) {
+      // The authNotifierProvider handles checking credentials and the router handles redirection.
+      // We just need to stop the Gatekeeper's own initial checking spinner.
       if (mounted) {
-        context.go('/auth');
+        setState(() {
+          _isCheckingInitial = false;
+        });
       }
     } else {
       if (mounted) {
