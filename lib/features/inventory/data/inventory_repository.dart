@@ -28,7 +28,10 @@ class InventoryRepository {
       '_fields': 'id,name,type,price,regular_price,sale_price,on_sale,stock_quantity,stock_status,manage_stock,date_created,total_sales,images',
     };
     if (search != null && search.isNotEmpty) params['search'] = search;
-    if (stockStatus != null && stockStatus != 'all') params['stock_status'] = stockStatus;
+    
+    if (stockStatus != null && stockStatus != 'all') {
+      params['stock_status'] = stockStatus;
+    }
 
     final response = await _dio.get('/wp-json/wc/v3/products', queryParameters: params);
 
@@ -37,6 +40,23 @@ class InventoryRepository {
       return data.map((json) => ProductModel.fromJson(json)).toList();
     }
     throw Exception('Failed to fetch products');
+  }
+
+  Future<int?> fetchProductStock(int productId, {int? variationId}) async {
+    try {
+      final endpoint = variationId != null && variationId > 0
+          ? '/wp-json/wc/v3/products/$productId/variations/$variationId'
+          : '/wp-json/wc/v3/products/$productId';
+          
+      final response = await _dio.get(
+        endpoint,
+        queryParameters: {'_fields': 'stock_quantity'},
+      );
+      if (response.statusCode == 200) {
+        return response.data['stock_quantity'] as int?;
+      }
+    } catch (_) {}
+    return null;
   }
 
   Future<List<VariationModel>> fetchVariations(int productId) async {

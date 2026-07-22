@@ -6,37 +6,49 @@ import '../../features/auth/presentation/screens/auth_screen.dart';
 import '../../features/gatekeeper/presentation/screens/gatekeeper_screen.dart';
 import '../../features/auth/data/auth_repository.dart';
 import '../../features/dashboard/presentation/screens/dashboard_screen.dart';
+import '../widgets/splash_screen.dart';
+import '../widgets/update_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authNotifierProvider);
 
   return GoRouter(
-    initialLocation: '/gatekeeper',
+    initialLocation: '/splash',
     redirect: (context, state) {
       final isAuth = authState == AuthState.authenticated;
       final isNeedsGatekeeper = authState == AuthState.needsGatekeeper;
       final isUnauthenticated = authState == AuthState.unauthenticated;
       final isUninitialized = authState == AuthState.uninitialized;
+      final isNeedsUpdate = authState == AuthState.needsUpdate;
 
+      final isSplashRoute = state.matchedLocation == '/splash';
       final isGatekeeperRoute = state.matchedLocation == '/gatekeeper';
       final isAuthRoute = state.matchedLocation == '/auth';
+      final isUpdateRoute = state.matchedLocation == '/update';
 
-      // If app is still deciding, let it stay on gatekeeper (which can act as a splash)
-      if (isUninitialized) return null;
-
-      // If they need gatekeeper, and aren't there, send them there.
-      if (isNeedsGatekeeper && !isGatekeeperRoute) {
-        return '/gatekeeper';
+      // 1. App is checking status in background. Lock to splash.
+      if (isUninitialized) {
+        return isSplashRoute ? null : '/splash';
       }
 
-      // If they passed gatekeeper but need auth, send them to auth
-      if (isUnauthenticated && !isAuthRoute) {
-        return '/auth';
+      // 2. Forced Update Required. Lock to update.
+      if (isNeedsUpdate) {
+        return isUpdateRoute ? null : '/update';
       }
 
-      // If they are authenticated, send them to dashboard
+      // 3. User needs to enter License Key
+      if (isNeedsGatekeeper) {
+        return isGatekeeperRoute ? null : '/gatekeeper';
+      }
+
+      // 4. User needs to connect WooCommerce store
+      if (isUnauthenticated) {
+        return isAuthRoute ? null : '/auth';
+      }
+
+      // 5. User is fully authenticated, send to dashboard
       if (isAuth) {
-        if (isGatekeeperRoute || isAuthRoute) {
+        if (isSplashRoute || isGatekeeperRoute || isAuthRoute || isUpdateRoute) {
           return '/dashboard';
         }
       }
@@ -44,6 +56,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       return null;
     },
     routes: [
+      GoRoute(
+        path: '/splash',
+        builder: (context, state) => const SplashScreen(),
+      ),
+      GoRoute(
+        path: '/update',
+        builder: (context, state) => const UpdateScreen(),
+      ),
       GoRoute(
         path: '/gatekeeper',
         builder: (context, state) => const GatekeeperScreen(),

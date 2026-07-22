@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/dashboard_repository.dart';
 import '../../domain/models/store_stats.dart';
 import '../../domain/models/top_product.dart';
+import '../../domain/models/sales_chart_data.dart';
 
 class DashboardController extends AsyncNotifier<StoreStats> {
   Timer? _refreshTimer;
@@ -45,4 +46,21 @@ final topProductsCurrentMonthProvider = FutureProvider<List<TopProduct>>((ref) a
 final topProductsLastMonthProvider = FutureProvider<List<TopProduct>>((ref) async {
   final repo = ref.watch(dashboardRepositoryProvider);
   return repo.fetchTopSellingProducts('last_month');
+});
+
+class ChartPeriodNotifier extends Notifier<String> {
+  @override
+  String build() => 'week';
+
+  void updatePeriod(String period) {
+    state = period;
+  }
+}
+
+final chartPeriodProvider = NotifierProvider<ChartPeriodNotifier, String>(ChartPeriodNotifier.new);
+
+final salesChartProvider = FutureProvider<SalesChartData>((ref) async {
+  final period = ref.watch(chartPeriodProvider);
+  final repo = ref.watch(dashboardRepositoryProvider);
+  return repo.fetchChartData(period);
 });

@@ -31,8 +31,14 @@ class NotificationsController extends AsyncNotifier<List<NotificationModel>> {
 
   Future<void> addNotification(NotificationModel notification) async {
     final currentList = state.value ?? await _loadFromStorage();
-    // Check if ID already exists
-    if (currentList.any((n) => n.id == notification.id)) return;
+    // Check if ID or OrderID already exists
+    bool exists = false;
+    if (notification.orderId != null && notification.orderId!.isNotEmpty) {
+      exists = currentList.any((n) => n.orderId == notification.orderId);
+    } else {
+      exists = currentList.any((n) => n.id == notification.id);
+    }
+    if (exists) return;
     
     final updatedList = [notification, ...currentList];
     if (updatedList.length > _maxNotifications) {

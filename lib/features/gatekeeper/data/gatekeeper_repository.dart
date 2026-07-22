@@ -82,16 +82,19 @@ class GatekeeperRepository {
         return GatekeeperStatus.allowed;
       } else {
         // Invalid key, expired, etc.
-        throw Exception("Keygen Error: ${meta['detail'] ?? meta['code']}");
+        return GatekeeperStatus.revoked;
       }
     } catch (e) {
       print('Keygen REST Error: $e');
       if (e is DioException) {
-          final errorData = e.response?.data;
-          print('Keygen API Response: $errorData');
-          throw Exception("Keygen API Error: ${e.response?.statusCode} - $errorData");
+          if (e.response != null && e.response!.statusCode != null) {
+              final status = e.response!.statusCode!;
+              if (status >= 400 && status < 500) {
+                 return GatekeeperStatus.revoked;
+              }
+          }
       }
-      throw Exception('Network or Keygen Error: $e');
+      return GatekeeperStatus.networkError;
     }
   }
 

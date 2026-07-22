@@ -6,6 +6,7 @@ import '../../../../core/storage/secure_storage.dart';
 import '../../../../core/network/dio_config.dart';
 import '../domain/models/store_stats.dart';
 import '../domain/models/top_product.dart';
+import '../domain/models/sales_chart_data.dart';
 
 final dashboardRepositoryProvider = Provider<DashboardRepository>((ref) {
   final storage = ref.watch(secureStorageProvider);
@@ -45,26 +46,25 @@ class DashboardRepository {
       final String yearStr = "${now.year}-01-01";
       final String todayStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
 
-      // Query real-time orders for today to bypass any WooCommerce report caching
-      final reqTodayOrders = _dio.get('/wp-json/wc/v3/orders', queryParameters: {
+      // Query sequentially to prevent CPU/RAM spikes on the WooCommerce server
+      final reqTodayOrders = await _dio.get('/wp-json/wc/v3/orders', queryParameters: {
         'after': '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}T00:00:00',
         'per_page': 100,
       });
 
-      final reqMonth = _dio.get('/wp-json/wc/v3/reports/sales', queryParameters: {
+      final reqMonth = await _dio.get('/wp-json/wc/v3/reports/sales', queryParameters: {
         'date_min': monthStr,
         'date_max': todayStr,
       });
 
-      final reqYear = _dio.get('/wp-json/wc/v3/reports/sales', queryParameters: {
+      final reqYear = await _dio.get('/wp-json/wc/v3/reports/sales', queryParameters: {
         'date_min': yearStr,
         'date_max': todayStr,
       });
 
-      final reqVisitors = _dio.get('/wp-json/woopress/v1/stats', options: Options(validateStatus: (_) => true)).catchError((_) => Response(requestOptions: RequestOptions(), data: null, statusCode: 404));
+      final reqVisitors = await _dio.get('/wp-json/woopress/v1/stats', options: Options(validateStatus: (_) => true)).catchError((_) => Response(requestOptions: RequestOptions(), data: null, statusCode: 404));
 
-      // Wait for all concurrent requests
-      final responses = await Future.wait([reqTodayOrders, reqMonth, reqYear, reqVisitors]);
+      final responses = [reqTodayOrders, reqMonth, reqYear, reqVisitors];
 
       // Parse Live Orders Data for Today
       double todayRevenue = 0.0;
@@ -140,7 +140,7 @@ class DashboardRepository {
     }
   }
 
-  Future<List<TopProduct>> fetchTopSellingProducts(String period) async {
+  Future<List<TopProduct>> fetchTopSellingProducts(String period, {bool forceRefresh = false}) async {
     try {
       final cacheKey = 'cache_top_sellers_$period';
       final timeKey = 'cache_top_sellers_${period}_time';
@@ -184,7 +184,7 @@ class DashboardRepository {
       final topSellers = reportsRes.data as List;
       final Map<int, int> productSales = {};
 
-      for (var item in topSellers.take(5)) {
+      for (var item in topSellers.take(3)) {
         final productId = int.tryParse(item['product_id']?.toString() ?? '0') ?? 0;
         final qty = int.tryParse(item['quantity']?.toString() ?? '0') ?? 0;
         if (productId > 0 && qty > 0) {
@@ -262,6 +262,97 @@ class DashboardRepository {
       }
       print('Error fetching top sellers: $e');
       return [];
+    }
+  }
+
+  Future<SalesChartData> fetchChartData(String period, {bool forceRefresh = false}) async {
+    try {
+      final cacheKey = 'cache_chart_$period';
+      final timeKey = 'cache_chart_${period}_time';
+      final now = DateTime.now();
+
+      SalesChartData? cachedChart;
+      final cachedData = await _storage.read(key: cacheKey);
+      if (cachedData != null) {
+        try {
+          final decoded = jsonDecode(cachedData);
+          final pointsList = (decoded['points'] as List).map((e) => ChartDataPoint(
+            date: DateTime.parse(e['date']),
+            revenue: double.tryParse(e['revenue'].toString()) ?? 0.0,
+          )).toList();
+          cachedChart = SalesChartData(period: decoded['period'], points: pointsList);
+        } catch (e) {
+          print('Chart cache read error: $e');
+        }
+      }
+
+      final lastUpdateStr = await _storage.read(key: timeKey);
+      if (lastUpdateStr != null && cachedChart != null && !forceRefresh) {
+        final lastUpdate = DateTime.tryParse(lastUpdateStr);
+        if (lastUpdate != null && now.difference(lastUpdate).inHours < 12) {
+          return cachedChart;
+        }
+      }
+
+      final res = await _dio.get('/wp-json/wc/v3/reports/sales', queryParameters: {
+        'period': period,
+      });
+
+      if (res.data == null || res.data is! List || (res.data as List).isEmpty) {
+        if (cachedChart != null) return cachedChart;
+        return SalesChartData(period: period, points: []);
+      }
+
+      final data = (res.data as List)[0];
+      final totals = data['totals'] as Map<String, dynamic>?;
+
+      List<ChartDataPoint> points = [];
+      if (totals != null) {
+        totals.forEach((dateStr, values) {
+          final rev = double.tryParse(values['sales']?.toString() ?? '0') ?? 0.0;
+          
+          String parseableDate = dateStr;
+          if (dateStr.length == 7 && dateStr.contains('-')) {
+             parseableDate = "$dateStr-01";
+          }
+          
+          points.add(ChartDataPoint(
+            date: DateTime.parse(parseableDate),
+            revenue: rev,
+          ));
+        });
+      }
+
+      // Sort points by date ascending
+      points.sort((a, b) => a.date.compareTo(b.date));
+
+      final newChart = SalesChartData(period: period, points: points);
+
+      await _storage.write(key: cacheKey, value: jsonEncode({
+        'period': newChart.period,
+        'points': newChart.points.map((p) => {
+          'date': p.date.toIso8601String(),
+          'revenue': p.revenue,
+        }).toList(),
+      }));
+      await _storage.write(key: timeKey, value: now.toIso8601String());
+
+      return newChart;
+
+    } catch (e) {
+      final cacheKey = 'cache_chart_$period';
+      final cachedData = await _storage.read(key: cacheKey);
+      if (cachedData != null) {
+        try {
+          final decoded = jsonDecode(cachedData);
+          final pointsList = (decoded['points'] as List).map((e) => ChartDataPoint(
+            date: DateTime.parse(e['date']),
+            revenue: double.tryParse(e['revenue'].toString()) ?? 0.0,
+          )).toList();
+          return SalesChartData(period: decoded['period'], points: pointsList);
+        } catch (_) {}
+      }
+      return SalesChartData(period: period, points: []);
     }
   }
 }

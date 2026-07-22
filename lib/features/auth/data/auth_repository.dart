@@ -7,7 +7,6 @@ import '../../../../main.dart';
 import '../../gatekeeper/presentation/screens/gatekeeper_screen.dart';
 import '../../dashboard/presentation/providers/dashboard_controller.dart';
 import '../../../../core/storage/secure_storage.dart';
-import '../../notifications/data/fcm_service.dart';
 import '../../gatekeeper/data/gatekeeper_repository.dart';
 import 'dart:async';
 import 'package:firebase_database/firebase_database.dart';
@@ -105,7 +104,7 @@ class AuthRepository {
   }
 }
 
-enum AuthState { uninitialized, needsGatekeeper, unauthenticated, authenticated }
+enum AuthState { uninitialized, needsUpdate, needsGatekeeper, unauthenticated, authenticated }
 
 class AuthNotifier extends Notifier<AuthState> {
   StreamSubscription? _gatekeeperSub;
@@ -126,17 +125,32 @@ class AuthNotifier extends Notifier<AuthState> {
 
   Future<void> checkExistingCredentials() async {
     final repo = ref.read(authRepositoryProvider);
+    final gatekeeperRepo = ref.read(gatekeeperRepositoryProvider);
+
+    // 1. Check for forced updates first
+    bool needsUpdate = false;
+    try {
+      needsUpdate = await gatekeeperRepo.checkForUpdates('1.0.0').timeout(const Duration(seconds: 3));
+    } catch (_) {}
+
+    if (needsUpdate) {
+      state = AuthState.needsUpdate;
+      return;
+    }
+
     final hasCreds = await repo.hasCredentials();
     
     if (hasCreds) {
       final licenseKey = await repo._storage.read(key: 'license_key');
       if (licenseKey != null) {
         // Verify Keygen License on boot
-        final status = await ref.read(gatekeeperRepositoryProvider).verifyLicenseKey(licenseKey);
+        final status = await gatekeeperRepo.verifyLicenseKey(licenseKey);
         if (status == GatekeeperStatus.revoked) {
           await logout();
           return;
         }
+        // If status is allowed OR networkError, proceed to authenticated.
+        // This allows the app to boot into Offline Mode without internet.
         state = AuthState.authenticated;
       } else {
         state = AuthState.needsGatekeeper;
@@ -173,13 +187,7 @@ class AuthNotifier extends Notifier<AuthState> {
       
       if (isValid) {
         final finalDomain = await repo._storage.read(key: 'baseUrl');
-        if (finalDomain != null) {
-          try {
-            await ref.read(fcmServiceProvider).subscribeToStore(finalDomain);
-          } catch (e) {
-            print("Failed to subscribe to FCM on this platform: $e");
-          }
-        }
+
 
         ref.read(dashboardControllerProvider.notifier).refresh();
         state = AuthState.authenticated;

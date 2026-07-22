@@ -2,10 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:go_router/go_router.dart';
 import '../../../../core/storage/secure_storage.dart';
 import '../../data/gatekeeper_repository.dart';
-import '../../../notifications/data/fcm_service.dart';
 import '../../../auth/data/auth_repository.dart';
 import '../../../../core/utils/error_popup.dart';
 
@@ -16,108 +14,14 @@ class GatekeeperScreen extends ConsumerStatefulWidget {
   ConsumerState<GatekeeperScreen> createState() => _GatekeeperScreenState();
 }
 
-class _GatekeeperScreenState extends ConsumerState<GatekeeperScreen> with WidgetsBindingObserver {
+class _GatekeeperScreenState extends ConsumerState<GatekeeperScreen> {
   final TextEditingController _licenseController = TextEditingController();
-  bool _isCheckingInitial = true;
   bool _isVerifying = false;
 
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _checkInitialState();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && !_isVerifying) {
-      _checkInitialState();
-    }
-  }
-
-  @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
     _licenseController.dispose();
     super.dispose();
-  }
-
-  Future<void> _checkInitialState() async {
-    try {
-      await ref.read(fcmServiceProvider).initialize().timeout(const Duration(seconds: 3));
-    } catch (_) {}
-
-    if (!mounted) return;
-
-    final repo = ref.read(gatekeeperRepositoryProvider);
-    
-    bool needsUpdate = false;
-    try {
-      needsUpdate = await repo.checkForUpdates('1.0.0').timeout(const Duration(seconds: 3));
-    } catch (_) {}
-    if (needsUpdate) {
-      if (mounted) {
-        _showUpdateDialog();
-      }
-      return; 
-    }
-
-    final storage = ref.read(secureStorageProvider);
-    final savedDomain = await storage.read(key: 'store_domain');
-    
-    if (savedDomain != null && savedDomain.isNotEmpty) {
-      // The authNotifierProvider handles checking credentials and the router handles redirection.
-      // We just need to stop the Gatekeeper's own initial checking spinner.
-      if (mounted) {
-        setState(() {
-          _isCheckingInitial = false;
-        });
-      }
-    } else {
-      if (mounted) {
-        setState(() {
-          _isCheckingInitial = false;
-        });
-      }
-    }
-  }
-
-  void _showUpdateDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        backgroundColor: Theme.of(context).colorScheme.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4), side: BorderSide(color: Theme.of(context).dividerColor, width: 1)),
-        title: Text(
-          "UPDATE REQUIRED",
-          style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w900, fontSize: 16),
-        ),
-        content: Text(
-          "A new version of WooPress is available. Please update to continue using the app.",
-          style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6), fontSize: 14, height: 1.5),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () async {
-              final repo = ref.read(gatekeeperRepositoryProvider);
-              final url = await repo.getDownloadUrl();
-              final uri = Uri.parse(url);
-              
-              // Direct launch to external browser
-              await launchUrl(
-                uri,
-                mode: LaunchMode.externalApplication,
-              );
-            },
-            child: Text(
-              "DOWNLOAD APK",
-              style: TextStyle(color: Theme.of(context).colorScheme.primary, fontWeight: FontWeight.w900, fontSize: 12),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   void _showAccessDeniedDialog() {
@@ -215,75 +119,6 @@ class _GatekeeperScreenState extends ConsumerState<GatekeeperScreen> with Widget
 
   @override
   Widget build(BuildContext context) {
-    if (_isCheckingInitial) {
-      return Scaffold(
-        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        body: Stack(
-          children: [
-            Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Image.asset(
-                    'assets/images/app_screen_logo.png',
-                    width: 80,
-                    height: 80,
-                    fit: BoxFit.contain,
-                  ),
-                  const SizedBox(height: 32),
-                  CircularProgressIndicator(color: Theme.of(context).colorScheme.primary, strokeWidth: 2),
-                  const SizedBox(height: 24),
-                  Text(
-                    'FLYING TO STORE...',
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurface,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 2.0,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).dividerColor,
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: Theme.of(context).dividerColor),
-                    ),
-                    child: Text(
-                      'BETA VERSION',
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
-                        fontSize: 8,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1.0,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Positioned(
-              bottom: 40,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: Text(
-                  "Developed by Anas Riaz",
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.15),
-                    fontSize: 10,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(

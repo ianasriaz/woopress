@@ -7,18 +7,23 @@ import 'package:dio/dio.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import '../../../../core/storage/secure_storage.dart';
+import '../../../../core/widgets/shimmer_loading.dart';
 import '../../../gatekeeper/presentation/screens/gatekeeper_screen.dart';
 import '../providers/dashboard_controller.dart';
 import '../widgets/top_products_widget.dart';
+import '../widgets/sales_chart_widget.dart';
 import '../../../inventory/presentation/providers/inventory_controller.dart';
 import '../../domain/models/store_stats.dart';
+import '../../domain/models/top_product.dart';
 import '../../../inventory/presentation/screens/inventory_screen.dart';
 import '../../../orders/presentation/screens/orders_screen.dart' as import_orders;
 import '../../../../core/widgets/global_error_view.dart';
-import '../../../notifications/data/fcm_service.dart';
-import '../../../notifications/presentation/screens/notifications_screen.dart';
-import '../../../notifications/presentation/providers/notifications_controller.dart';
 import '../../../orders/presentation/providers/orders_controller.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+
+final connectivityStreamProvider = StreamProvider<List<ConnectivityResult>>((ref) {
+  return Connectivity().onConnectivityChanged;
+});
 
 class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
@@ -56,24 +61,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _checkAndHealNotifications();
       // Auto-Sync Data silently in the background
       ref.read(dashboardControllerProvider.notifier).refresh();
       ref.read(ordersControllerProvider.notifier).refresh();
-      ref.read(notificationsControllerProvider.notifier).refresh();
       ref.read(inventoryControllerProvider.notifier).refresh();
     }
   }
 
-  Future<void> _checkAndHealNotifications() async {
-    final storage = ref.read(secureStorageProvider);
-    final topic = await storage.read(key: 'last_fcm_topic');
-    if (topic == null || topic.startsWith('ERROR')) {
-      debugPrint("Auto-Healing: FCM Topic state is $topic. Triggering silent re-sync...");
-      await ref.read(fcmServiceProvider).reSyncNotifications();
-      if (mounted) setState(() {}); // Trigger a rebuild to update the info dialog if open
-    }
-  }
 
   Future<void> _loadOptimisticData() async {
     final storage = ref.read(secureStorageProvider);
@@ -108,8 +102,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
     HapticFeedback.lightImpact();
     final storage = ref.read(secureStorageProvider);
     final baseUrl = await storage.read(key: 'baseUrl');
-    final topic = await storage.read(key: 'last_fcm_topic');
-    final token = await storage.read(key: 'fcm_token');
 
     // Live Tracker Verification
     bool trackerActive = false;
@@ -140,60 +132,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
             const SizedBox(height: 16),
             _buildInfoRow("TRACKER STATUS", trackerActive ? "Active (Genuine)" : "Not Found (Paste Script)"),
             const SizedBox(height: 16),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text("LIVE CHANNEL", style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3), fontSize: 9, fontWeight: FontWeight.w900, letterSpacing: 1.2)),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 10),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.05),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(LucideIcons.radio, size: 12, color: topic != null && !topic.startsWith("ERROR") ? const Color(0xFF00FF00) : Colors.redAccent),
-                      const SizedBox(width: 8),
-                      Text(
-                        topic?.toUpperCase() ?? "NOT SUBSCRIBED",
-                        style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 11, fontWeight: FontWeight.w700),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            _buildInfoRow("DEVICE TOKEN", (token != null) ? "Registered (Active)" : "Missing"),
-            const SizedBox(height: 24),
-            GestureDetector(
-              onTap: () async {
-                HapticFeedback.heavyImpact();
-                await ref.read(fcmServiceProvider).reSyncNotifications();
-                if (mounted) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Notification channel re-synced!"), backgroundColor: Color(0xFF34C759)),
-                  );
-                }
-              },
-              child: Container(
-                height: 48,
-                decoration: BoxDecoration(
-                  border: Border.all(color: Theme.of(context).dividerColor),
-                  color: Theme.of(context).colorScheme.surface,
-                ),
-                child: Center(
-                  child: Text(
-                    "RE-SYNC NOTIFICATIONS",
-                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
@@ -287,7 +225,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
       ref.invalidate(dashboardControllerProvider);
       ref.invalidate(ordersControllerProvider);
       ref.invalidate(inventoryControllerProvider);
-      ref.invalidate(notificationsControllerProvider);
     } catch (e) {
       debugPrint("Error clearing cache: $e");
     }
@@ -346,6 +283,36 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
         centerTitle: false,
         elevation: 0,
         actions: [
+          Consumer(
+            builder: (context, ref, child) {
+              final connectivity = ref.watch(connectivityStreamProvider);
+              final isOffline = connectivity.when(
+                data: (results) => results.contains(ConnectivityResult.none),
+                loading: () => false,
+                error: (_, __) => false,
+              );
+              
+              if (isOffline) {
+                return Container(
+                  margin: const EdgeInsets.only(right: 8, top: 12, bottom: 12),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade100,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(LucideIcons.wifiOff, size: 14, color: Colors.red.shade800),
+                      const SizedBox(width: 4),
+                      Text('Offline', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.red.shade800)),
+                    ],
+                  ),
+                );
+              }
+              return const SizedBox.shrink();
+            },
+          ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
             child: _isRefreshing 
@@ -383,7 +350,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
             },
             child: statsAsync.when(
               data: (stats) => _buildDashboardContent(stats, isLoading: false),
-              loading: () => _buildDashboardContent(_optimisticStats, isLoading: true),
+              loading: () => const DashboardSkeletonView(),
               error: (e, _) => GlobalErrorView(
                 onRetry: () => ref.read(dashboardControllerProvider.notifier).refresh(),
               ),
@@ -391,7 +358,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
           ),
           const import_orders.OrdersScreen(),
           const InventoryScreen(),
-          const NotificationsScreen(),
         ],
       ),
       bottomNavigationBar: Container(
@@ -416,38 +382,9 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
             const BottomNavigationBarItem(icon: Icon(LucideIcons.layoutDashboard, size: 22), label: 'STATS'),
             const BottomNavigationBarItem(icon: Icon(LucideIcons.shoppingBag, size: 22), label: 'ORDERS'),
             const BottomNavigationBarItem(icon: Icon(LucideIcons.package, size: 22), label: 'INVENTORY'),
-            BottomNavigationBarItem(
-              icon: _buildNotificationIcon(ref),
-              label: 'ALERTS',
-            ),
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildNotificationIcon(WidgetRef ref) {
-    final notificationsAsync = ref.watch(notificationsControllerProvider);
-    final count = notificationsAsync.value?.where((n) => !n.isRead).length ?? 0;
-    
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        const Icon(LucideIcons.bell, size: 22),
-        if (count > 0)
-          Positioned(
-            right: -4,
-            top: -4,
-            child: Container(
-              padding: const EdgeInsets.all(3),
-              decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-              child: Text(
-                count > 9 ? '9+' : count.toString(),
-                style: const TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.w900),
-              ),
-            ),
-          ),
-      ],
     );
   }
 
@@ -547,7 +484,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
                     ],
                   ),
                   const SizedBox(height: 32),
-                  _buildSectionHeader("SALES OVERVIEW"),
+                  _buildSectionHeader("TODAY OVERVIEW"),
                   const SizedBox(height: 12),
                   Row(
                     children: [
@@ -556,8 +493,6 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
                       Expanded(child: _buildStatCard("Items Sold", stats.itemsSold.toString(), LucideIcons.layers, isSmall: true)),
                     ],
                   ),
-                  const SizedBox(height: 24),
-                  _buildSectionHeader("VISITOR ANALYTICS"),
                   const SizedBox(height: 12),
                   Row(
                     children: [
@@ -570,17 +505,21 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
                 ],
               ),
           const SizedBox(height: 16),
-          // --- TOP PRODUCTS WIDGETS HERE ---
-          TopProductsWidget(
-            provider: topProductsCurrentMonthProvider,
-            title: "Top 5 Sellers (This Month, ${_getMonthName(DateTime.now())})",
-            emptyMessage: "No sales recorded this month.",
-          ),
+          const SalesChartWidget(),
           const SizedBox(height: 24),
-          TopProductsWidget(
-            provider: topProductsLastMonthProvider,
-            title: "Top 5 Sellers (Last Month, ${_getMonthName(DateTime(DateTime.now().year, DateTime.now().month - 1, 1))})",
-            emptyMessage: "No sales recorded last month.",
+          // --- TOP PRODUCTS WIDGETS HERE ---
+          _buildSectionHeader("TOP SELLERS"),
+          const SizedBox(height: 12),
+          _buildTopSellersTile(
+            context,
+            DateFormat('MMMM yyyy').format(DateTime.now()).toUpperCase(),
+            topProductsCurrentMonthProvider,
+          ),
+          const SizedBox(height: 12),
+          _buildTopSellersTile(
+            context,
+            DateFormat('MMMM yyyy').format(DateTime(DateTime.now().year, DateTime.now().month - 1, 1)).toUpperCase(),
+            topProductsLastMonthProvider,
           ),
           const SizedBox(height: 40),
         ],
@@ -588,9 +527,41 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
     );
   }
 
-  String _getMonthName(DateTime date) {
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return months[date.month - 1];
+  Widget _buildTopSellersTile(BuildContext context, String title, FutureProvider<List<TopProduct>> provider) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Theme.of(context).dividerColor),
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          iconColor: Theme.of(context).colorScheme.primary,
+          collapsedIconColor: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+          tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          title: Text(
+            title, 
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurface, 
+              fontWeight: FontWeight.w900, 
+              fontSize: 13,
+              letterSpacing: 1.0,
+            ),
+          ),
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16, left: 16),
+              child: TopProductsWidget(
+                provider: provider,
+                title: "",
+                emptyMessage: "No sales recorded.",
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildSectionHeader(String title) {

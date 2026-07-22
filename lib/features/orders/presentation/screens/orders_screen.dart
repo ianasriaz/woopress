@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'dart:io';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:lucide_icons/lucide_icons.dart';
@@ -13,6 +15,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import '../../../../core/widgets/global_error_view.dart';
 import '../../../../core/widgets/empty_state_view.dart';
 import '../../../../core/database/database_helper.dart';
+import '../../../../core/widgets/shimmer_loading.dart';
 
 final connectivityStreamProvider = StreamProvider<List<ConnectivityResult>>((ref) {
   return Connectivity().onConnectivityChanged;
@@ -23,6 +26,15 @@ final pendingSyncProvider = StreamProvider.autoDispose<int>((ref) async* {
     yield await DatabaseHelper.instance.getPendingSyncCount();
     await Future.delayed(const Duration(seconds: 3));
   }
+});
+
+final productStockProvider = FutureProvider.family<int?, String>((ref, idPair) async {
+  final parts = idPair.split('-');
+  final pId = int.tryParse(parts[0]) ?? 0;
+  final vId = parts.length > 1 ? int.tryParse(parts[1]) ?? 0 : 0;
+  if (pId == 0) return null;
+  final repo = ref.watch(inventoryRepositoryProvider);
+  return repo.fetchProductStock(pId, variationId: vId > 0 ? vId : null);
 });
 
 class OrdersScreen extends ConsumerStatefulWidget {
@@ -187,7 +199,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
                     ),
                   );
                 },
-                loading: () => Center(child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary)),
+                loading: () => const SkeletonList(skeletonItem: SkeletonOrderCard()),
                 error: (e, _) => GlobalErrorView(
                   onRetry: () => ref.read(ordersControllerProvider.notifier).refresh(),
                 ),
@@ -218,8 +230,8 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
           style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14, fontWeight: FontWeight.w600),
           decoration: InputDecoration(
             hintText: "Search name or ID...",
-            hintStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.2), fontSize: 13),
-            prefixIcon: Icon(LucideIcons.search, size: 16, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3)),
+            hintStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.2), fontSize: 13),
+            prefixIcon: Icon(LucideIcons.search, size: 16, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.3)),
             suffixIcon: _searchQuery.isNotEmpty 
               ? IconButton(
                   icon: Icon(LucideIcons.x, size: 14, color: Theme.of(context).colorScheme.onSurface),
@@ -268,7 +280,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
                     child: Text(
                       filter['label']!,
                       style: TextStyle(
-                        color: isSelected ? Theme.of(context).colorScheme.onPrimary : Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
+                        color: isSelected ? Theme.of(context).colorScheme.onPrimary : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.3),
                         fontSize: 7.5,
                         fontWeight: FontWeight.w900,
                         letterSpacing: 0.5,
@@ -342,7 +354,7 @@ class _OrderDetailsSheet extends StatelessWidget {
                 onTap: () => Navigator.pop(context),
                 child: Container(
                   padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(color: Theme.of(context).dividerColor.withOpacity(0.1), shape: BoxShape.circle),
+                  decoration: BoxDecoration(color: Theme.of(context).dividerColor.withValues(alpha: 0.1), shape: BoxShape.circle),
                   child: Icon(LucideIcons.x, color: Theme.of(context).colorScheme.onSurface, size: 20),
                 ),
               ),
@@ -359,7 +371,7 @@ class _OrderDetailsSheet extends StatelessWidget {
                     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     width: double.infinity,
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                      color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
                       border: Border.all(color: Theme.of(context).dividerColor),
                       borderRadius: BorderRadius.circular(8),
                     ),
@@ -367,11 +379,11 @@ class _OrderDetailsSheet extends StatelessWidget {
                       children: [
                         _buildCustomerTableRow(context, "NAME", order.customerName),
                         if (order.billing.phone.isNotEmpty) ...[
-                          Divider(color: Theme.of(context).dividerColor.withOpacity(0.5), height: 1),
+                          Divider(color: Theme.of(context).dividerColor.withValues(alpha: 0.5), height: 1),
                           _buildCustomerTableRow(context, "PHONE", order.billing.phone, onTap: () => launchUrl(Uri.parse("tel:${order.billing.phone}"))),
                         ],
                         if (order.billing.email.isNotEmpty) ...[
-                          Divider(color: Theme.of(context).dividerColor.withOpacity(0.5), height: 1),
+                          Divider(color: Theme.of(context).dividerColor.withValues(alpha: 0.5), height: 1),
                           _buildCustomerTableRow(context, "EMAIL", order.billing.email, onTap: () => launchUrl(Uri.parse("mailto:${order.billing.email}"))),
                         ],
                       ],
@@ -395,8 +407,8 @@ class _OrderDetailsSheet extends StatelessWidget {
                       width: double.infinity,
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: Colors.amber.withOpacity(0.1),
-                        border: Border.all(color: Colors.amber.withOpacity(0.5)),
+                        color: Colors.amber.withValues(alpha: 0.1),
+                        border: Border.all(color: Colors.amber.withValues(alpha: 0.5)),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Row(
@@ -446,7 +458,7 @@ class _OrderDetailsSheet extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 12),
       child: Text(
         title,
-        style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1.5),
+        style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.3), fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1.5),
       ),
     );
   }
@@ -460,7 +472,7 @@ class _OrderDetailsSheet extends StatelessWidget {
         children: [
           SizedBox(
             width: 60,
-            child: Text(label, style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5), fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
+            child: Text(label, style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5), fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 0.5)),
           ),
           Expanded(
             child: GestureDetector(
@@ -494,7 +506,7 @@ class _OrderDetailsSheet extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       width: double.infinity,
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+        color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
         border: Border.all(color: Theme.of(context).dividerColor),
         borderRadius: BorderRadius.circular(8),
       ),
@@ -504,7 +516,7 @@ class _OrderDetailsSheet extends StatelessWidget {
           Expanded(
             child: Text(
               address,
-              style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.8), fontSize: 14, height: 1.5, fontWeight: FontWeight.w500),
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.8), fontSize: 14, height: 1.5, fontWeight: FontWeight.w500),
             ),
           ),
           IconButton(
@@ -523,70 +535,101 @@ class _OrderDetailsSheet extends StatelessWidget {
   Widget _buildItemCard(BuildContext context, OrderItem item) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
-        border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.1)),
-        borderRadius: BorderRadius.circular(8),
+        color: Theme.of(context).colorScheme.surface,
+        border: Border.all(color: Theme.of(context).dividerColor),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 8, offset: const Offset(0, 4)),
+        ]
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(
         children: [
-          _OrderItemImage(item: item),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(item.name, style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14, fontWeight: FontWeight.w800)),
-                if (item.variationAttributes.isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: item.variationAttributes.map((attr) {
-                      return Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: Theme.of(context).colorScheme.primary.withOpacity(0.2)),
+                _OrderItemImage(item: item),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              item.name, 
+                              style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14, fontWeight: FontWeight.w800, height: 1.3),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text("Rs. ${item.total}", style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14, fontWeight: FontWeight.w900)),
+                              if (item.quantity > 1 && item.price.isNotEmpty && item.price != '0.00')
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 2),
+                                  child: Text("Rs. ${item.price} each", style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5), fontSize: 10, fontWeight: FontWeight.w700)),
+                                ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      if (item.variationAttributes.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: item.variationAttributes.map((attr) {
+                            return Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                "${attr['key']}: ${attr['value']}",
+                                style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7), fontSize: 11, fontWeight: FontWeight.w700),
+                              ),
+                            );
+                          }).toList(),
                         ),
-                        child: Text(
-                          "${attr['key']}: ${attr['value']}",
-                          style: TextStyle(color: Theme.of(context).colorScheme.primary, fontSize: 11, fontWeight: FontWeight.w800),
-                        ),
-                      );
-                    }).toList(),
+                      ],
+                    ],
                   ),
-                ],
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
-                      child: Text("${item.quantity}x", style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w900, fontSize: 11)),
-                    ),
-                    const SizedBox(width: 8),
-                    if (item.sku.isNotEmpty)
-                      Text("SKU: ${item.sku}", style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4), fontSize: 10, fontWeight: FontWeight.w600)),
-                  ],
                 ),
               ],
             ),
           ),
-          const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text("Rs. ${item.total}", style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14, fontWeight: FontWeight.w900)),
-              if (item.quantity > 1 && item.price.isNotEmpty && item.price != '0.00')
-                Padding(
-                  padding: const EdgeInsets.only(top: 4),
-                  child: Text("Rs. ${item.price} each", style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5), fontSize: 10, fontWeight: FontWeight.w700)),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
+              borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(12), bottomRight: Radius.circular(12)),
+              border: Border(top: BorderSide(color: Theme.of(context).dividerColor)),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(color: Theme.of(context).colorScheme.primary, borderRadius: BorderRadius.circular(4)),
+                      child: Text("QTY: ${item.quantity}", style: TextStyle(color: Theme.of(context).colorScheme.onPrimary, fontWeight: FontWeight.w900, fontSize: 10, letterSpacing: 0.5)),
+                    ),
+                    const SizedBox(width: 12),
+                    if (item.sku.isNotEmpty)
+                      Text("SKU: ${item.sku}", style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4), fontSize: 11, fontWeight: FontWeight.w700)),
+                  ],
                 ),
-            ],
+                _OrderItemStockBadge(productId: item.productId, variationId: item.variationId),
+              ],
+            ),
           ),
         ],
       ),
@@ -599,8 +642,8 @@ class _OrderDetailsSheet extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label, style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3), fontSize: 13, fontWeight: FontWeight.w600)),
-          if (value is Widget) value else Text(value.toString(), style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7), fontSize: 13, fontWeight: FontWeight.w800)),
+          Text(label, style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.3), fontSize: 13, fontWeight: FontWeight.w600)),
+          if (value is Widget) value else Text(value.toString(), style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7), fontSize: 13, fontWeight: FontWeight.w800)),
         ],
       ),
     );
@@ -660,17 +703,17 @@ class _OrderItemImageState extends ConsumerState<_OrderItemImage> {
         child: Container(
           width: 50,
           height: 50,
-          color: Theme.of(context).dividerColor.withOpacity(0.1),
+          color: Theme.of(context).dividerColor.withValues(alpha: 0.1),
           child: _imageUrl != null
               ? CachedNetworkImage(
                   imageUrl: _imageUrl!,
                   fit: BoxFit.cover,
                   placeholder: (context, url) => Center(child: SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2, color: Theme.of(context).colorScheme.primary))),
-                  errorWidget: (context, url, error) => Icon(LucideIcons.image, size: 20, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.1)),
+                  errorWidget: (context, url, error) => Icon(LucideIcons.image, size: 20, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.1)),
                 )
               : _loading
                   ? Center(child: SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 2, color: Theme.of(context).colorScheme.primary)))
-                  : Icon(LucideIcons.image, size: 20, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.1)),
+                  : Icon(LucideIcons.image, size: 20, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.1)),
         ),
       ),
     );
@@ -687,7 +730,7 @@ class _OrderItemImageState extends ConsumerState<_OrderItemImage> {
             Positioned.fill(
               child: GestureDetector(
                 onTap: () => Navigator.pop(ctx),
-                child: Container(color: Colors.black.withOpacity(0.9)),
+                child: Container(color: Colors.black.withValues(alpha: 0.9)),
               ),
             ),
             Positioned.fill(
@@ -762,34 +805,34 @@ class _OrderCard extends ConsumerWidget {
           const SizedBox(height: 4),
           Row(
             children: [
-              Icon(LucideIcons.calendar, size: 12, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4)),
+              Icon(LucideIcons.calendar, size: 12, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4)),
               const SizedBox(width: 4),
               Text(
                 _formatDate(order.dateCreated),
-                style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4), fontSize: 11, fontWeight: FontWeight.w600),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4), fontSize: 11, fontWeight: FontWeight.w600),
               ),
               const SizedBox(width: 12),
-              Icon(LucideIcons.clock, size: 12, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4)),
+              Icon(LucideIcons.clock, size: 12, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4)),
               const SizedBox(width: 4),
               Text(
                 _formatTime(order.dateCreated),
-                style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4), fontSize: 11, fontWeight: FontWeight.w600),
+                style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4), fontSize: 11, fontWeight: FontWeight.w600),
               ),
             ],
           ),
           const SizedBox(height: 8),
           Text(
             "${order.items.length} items • ${order.total} ${order.currency}",
-            style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5), fontSize: 13, fontWeight: FontWeight.w600),
+            style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5), fontSize: 13, fontWeight: FontWeight.w600),
           ),
           if (order.trackingNumber.isNotEmpty) ...[
             const SizedBox(height: 12),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.1)),
+                border: Border.all(color: Theme.of(context).dividerColor.withValues(alpha: 0.1)),
               ),
               child: Row(
                 children: [
@@ -868,7 +911,7 @@ class _OrderCard extends ConsumerWidget {
                     decoration: BoxDecoration(
                       color: Theme.of(context).colorScheme.surface,
                       borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: Theme.of(context).colorScheme.primary.withOpacity(0.3)),
+                      border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3)),
                     ),
                     child: Center(
                       child: Icon(LucideIcons.phone, size: 20, color: Theme.of(context).colorScheme.primary),
@@ -877,14 +920,14 @@ class _OrderCard extends ConsumerWidget {
                 ),
                 const SizedBox(width: 8),
                 GestureDetector(
-                  onTap: () => _launchWhatsApp(order.billing.phone, order.id.toString(), order.customerName),
+                  onTap: () => _launchWhatsApp(order),
                   child: Container(
                     height: 48,
                     width: 48,
                     decoration: BoxDecoration(
                       color: Theme.of(context).colorScheme.surface,
                       borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: const Color(0xFF25D366).withOpacity(0.3)),
+                      border: Border.all(color: const Color(0xFF25D366).withValues(alpha: 0.3)),
                     ),
                     child: Center(
                       child: const FaIcon(FontAwesomeIcons.whatsapp, size: 20, color: Color(0xFF25D366)),
@@ -907,25 +950,28 @@ class _OrderCard extends ConsumerWidget {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.only(topLeft: Radius.circular(24), topRight: Radius.circular(24)),
       ),
+      isScrollControlled: true,
       builder: (context) => SafeArea(
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                "UPDATE ORDER STATUS",
-                style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: 1.0),
-              ),
-              const SizedBox(height: 24),
-              _buildStatusOption(context, ref, order.id, "pending", "PENDING", LucideIcons.clock, const Color(0xFFFF9500)),
-              _buildStatusOption(context, ref, order.id, "processing", "PROCESSING", LucideIcons.loader, const Color(0xFF007AFF)),
-              _buildStatusOption(context, ref, order.id, "on-hold", "ON HOLD", LucideIcons.pauseCircle, const Color(0xFFFFCC00)),
-              _buildStatusOption(context, ref, order.id, "completed", "COMPLETED", LucideIcons.checkCircle, const Color(0xFF34C759)),
-              Divider(color: Theme.of(context).dividerColor, height: 32),
-              _buildStatusOption(context, ref, order.id, "cancelled", "CANCEL ORDER", LucideIcons.xCircle, const Color(0xFFFF3B30), isDanger: true),
-            ],
+          padding: const EdgeInsets.only(left: 24, right: 24, top: 32, bottom: 48),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "UPDATE ORDER STATUS",
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: 1.0),
+                ),
+                const SizedBox(height: 24),
+                _buildStatusOption(context, ref, order.id, "pending", "PENDING", LucideIcons.clock),
+                _buildStatusOption(context, ref, order.id, "processing", "PROCESSING", LucideIcons.loader),
+                _buildStatusOption(context, ref, order.id, "on-hold", "ON HOLD", LucideIcons.pauseCircle),
+                _buildStatusOption(context, ref, order.id, "completed", "COMPLETED", LucideIcons.checkCircle),
+                Divider(color: Theme.of(context).dividerColor, height: 32),
+                _buildStatusOption(context, ref, order.id, "cancelled", "CANCEL ORDER", LucideIcons.xCircle, isDanger: true),
+              ],
+            ),
           ),
         ),
       ),
@@ -939,44 +985,53 @@ class _OrderCard extends ConsumerWidget {
     String slug, 
     String label, 
     IconData icon, 
-    Color color, 
     {bool isDanger = false}
   ) {
+    Color color = Theme.of(context).colorScheme.onSurface;
+    if (isDanger) {
+      color = const Color(0xFFFF3B30);
+    } else if (slug == 'completed') {
+      color = const Color(0xFF34C759);
+    }
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: GestureDetector(
-        onTap: () {
-          Navigator.pop(context);
-          if (isDanger) {
-            _confirmCancel(context, ref, orderId);
-          } else if (slug == 'completed') {
-            _showTrackingDialog(context, ref, orderId);
-          } else {
-            ref.read(ordersControllerProvider.notifier).updateStatus(orderId, slug);
-          }
-        },
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: color.withOpacity(0.1)),
-          ),
-          child: Row(
-            children: [
-              Icon(icon, color: color, size: 20),
-              const SizedBox(width: 16),
-              Text(
-                label,
-                style: TextStyle(
-                  color: color,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () {
+            Navigator.pop(context);
+            if (isDanger) {
+              _confirmCancel(context, ref, orderId);
+            } else if (slug == 'completed') {
+              _showTrackingDialog(context, ref, orderId);
+            } else {
+              ref.read(ordersControllerProvider.notifier).updateStatus(orderId, slug);
+            }
+          },
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: color.withValues(alpha: 0.15)),
+            ),
+            child: Row(
+              children: [
+                Icon(icon, color: color, size: 20),
+                const SizedBox(width: 16),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
-              ),
-              const Spacer(),
-              Icon(LucideIcons.chevronRight, color: color.withOpacity(0.3), size: 16),
-            ],
+                const Spacer(),
+                if (!isDanger) Icon(LucideIcons.chevronRight, color: color.withValues(alpha: 0.3), size: 16),
+              ],
+            ),
           ),
         ),
       ),
@@ -991,11 +1046,11 @@ class _OrderCard extends ConsumerWidget {
         backgroundColor: Theme.of(context).colorScheme.surface,
         shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
         title: Text("CANCEL ORDER", style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w900)),
-        content: Text("Are you sure you want to cancel this order? This cannot be undone.", style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7))),
+        content: Text("Are you sure you want to cancel this order? This cannot be undone.", style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7))),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: Text("NO", style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5), fontWeight: FontWeight.w900)),
+            child: Text("NO", style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5), fontWeight: FontWeight.w900)),
           ),
           TextButton(
             onPressed: () {
@@ -1041,7 +1096,7 @@ class _OrderCard extends ConsumerWidget {
                     const SizedBox(height: 8),
                     Text(
                       "Optionally provide tracking details before completing.",
-                      style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5), fontSize: 12),
+                      style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5), fontSize: 12),
                     ),
                     const SizedBox(height: 24),
                     TextField(
@@ -1050,7 +1105,7 @@ class _OrderCard extends ConsumerWidget {
                         labelText: "Tracking Number (Optional)",
                         border: const OutlineInputBorder(),
                         filled: true,
-                        fillColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                        fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -1060,7 +1115,7 @@ class _OrderCard extends ConsumerWidget {
                         labelText: "Courier",
                         border: const OutlineInputBorder(),
                         filled: true,
-                        fillColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                        fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
                       ),
                       items: couriers.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
                       onChanged: (v) {
@@ -1075,7 +1130,7 @@ class _OrderCard extends ConsumerWidget {
                           labelText: "Specify Courier Name",
                           border: const OutlineInputBorder(),
                           filled: true,
-                          fillColor: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
+                          fillColor: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
                         ),
                       ),
                     ],
@@ -1152,9 +1207,9 @@ class _StatusChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.15),
+        color: color.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: color.withOpacity(0.5)),
+        border: Border.all(color: color.withValues(alpha: 0.5)),
       ),
       child: Text(
         status.toUpperCase(),
@@ -1164,7 +1219,8 @@ class _StatusChip extends StatelessWidget {
   }
 }
 
-void _launchWhatsApp(String phone, String orderId, String name) async {
+void _launchWhatsApp(OrderModel order) async {
+  String phone = order.billing.phone;
   // Remove all non-digit characters
   String sanitizedPhone = phone.replaceAll(RegExp(r'\D'), '');
   if (sanitizedPhone.isEmpty) return;
@@ -1189,8 +1245,42 @@ void _launchWhatsApp(String phone, String orderId, String name) async {
     sanitizedPhone = '92$sanitizedPhone';
   }
 
-  final message = "Hello $name, this is regarding your order #$orderId.";
-  final url = "https://wa.me/$sanitizedPhone?text=${Uri.encodeComponent(message)}";
+  String itemsList = order.items.map((i) => "${i.quantity}x ${i.name}").join("\n- ");
+  
+  final storage = const FlutterSecureStorage();
+  final storeName = await storage.read(key: 'store_name') ?? 'Our Store';
+  
+  final message = """Dear *${order.customerName}*,
+
+Thank you for placing your order at *$storeName*!
+
+*Order #*: ${order.id}
+*Order Amount*: ${order.currency} ${order.total}
+
+*Item Details*:
+- $itemsList
+
+Please confirm your order by replying to this message. Thank you!""";
+
+  final encodedMessage = Uri.encodeComponent(message);
+  
+  if (Platform.isAndroid) {
+    try {
+      final w4bUrl = "intent://send?phone=$sanitizedPhone&text=$encodedMessage#Intent;package=com.whatsapp.w4b;scheme=whatsapp;end";
+      if (await launchUrl(Uri.parse(w4bUrl), mode: LaunchMode.externalApplication)) {
+        return;
+      }
+    } catch (_) {}
+    
+    try {
+      final waUrl = "intent://send?phone=$sanitizedPhone&text=$encodedMessage#Intent;package=com.whatsapp;scheme=whatsapp;end";
+      if (await launchUrl(Uri.parse(waUrl), mode: LaunchMode.externalApplication)) {
+        return;
+      }
+    } catch (_) {}
+  }
+
+  final url = "https://wa.me/$sanitizedPhone?text=$encodedMessage";
   
   if (await canLaunchUrl(Uri.parse(url))) {
     await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
@@ -1246,15 +1336,15 @@ class SourceBadge extends StatelessWidget {
       color = Theme.of(context).colorScheme.primary;
     } else {
       icon = LucideIcons.link;
-      color = Theme.of(context).colorScheme.onSurface.withOpacity(0.5);
+      color = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5);
     }
 
     return Container(
       padding: EdgeInsets.symmetric(horizontal: isSmall ? 8 : 10, vertical: isSmall ? 4 : 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(isSmall ? 4 : 6),
-        border: Border.all(color: color.withOpacity(0.2)),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1282,6 +1372,45 @@ class SourceBadge extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _OrderItemStockBadge extends ConsumerWidget {
+  final int productId;
+  final int variationId;
+  const _OrderItemStockBadge({required this.productId, required this.variationId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final stockAsync = ref.watch(productStockProvider("$productId-$variationId"));
+    return stockAsync.when(
+      data: (stock) {
+        if (stock == null) return const SizedBox.shrink();
+        final isLow = stock <= 5;
+        final isOut = stock <= 0;
+        final color = isOut ? const Color(0xFFFF3B30) : isLow ? const Color(0xFFFFCC00) : const Color(0xFF34C759);
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(isOut ? LucideIcons.alertTriangle : LucideIcons.packageCheck, size: 12, color: color),
+              const SizedBox(width: 4),
+              Text(
+                "Items Left: $stock",
+                style: TextStyle(color: color, fontWeight: FontWeight.w900, fontSize: 10),
+              ),
+            ],
+          ),
+        );
+      },
+      loading: () => SizedBox(width: 12, height: 12, child: CircularProgressIndicator(color: Theme.of(context).colorScheme.primary, strokeWidth: 2)),
+      error: (_, __) => const SizedBox.shrink(),
     );
   }
 }

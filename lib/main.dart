@@ -5,50 +5,9 @@ import 'package:flex_color_scheme/flex_color_scheme.dart';
 import 'core/router/app_router.dart';
 
 import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
-
-import 'features/notifications/data/fcm_service.dart';
-
 import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'features/notifications/domain/models/notification_model.dart';
 import 'core/network/sync_service.dart';
-
-@pragma('vm:entry-point')
-Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp();
-  
-  final title = message.notification?.title ?? message.data['title'] ?? "New Order Received";
-  final body = message.notification?.body ?? message.data['body'] ?? "Check your dashboard for details.";
-  final orderId = message.data['order_id']?.toString();
-
-  final notification = NotificationModel(
-    id: message.messageId ?? DateTime.now().millisecondsSinceEpoch.toString(),
-    title: title,
-    body: body,
-    timestamp: DateTime.now(),
-    orderId: orderId,
-  );
-
-  const storage = FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
-  );
-  final data = await storage.read(key: 'notifications_history_v1');
-  List<NotificationModel> list = [];
-  if (data != null) {
-    try {
-      final List decoded = jsonDecode(data);
-      list = decoded.map((e) => NotificationModel.fromJson(e)).toList();
-    } catch (_) {}
-  }
-  
-  // Prevent duplicate IDs
-  if (!list.any((n) => n.id == notification.id)) {
-    list.insert(0, notification);
-    if (list.length > 50) list.removeLast();
-    await storage.write(key: 'notifications_history_v1', value: jsonEncode(list.map((e) => e.toJson()).toList()));
-  }
-}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -63,19 +22,11 @@ void main() async {
         databaseURL: 'https://wooexpress-default-rtdb.asia-southeast1.firebasedatabase.app',
       ),
     );
-    if (!kIsWeb) {
-      FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-    }
   } catch (e) {
     print('Firebase Init Error: $e');
   }
 
   final container = ProviderContainer();
-  
-  // Initialize FCM Service (Skip on Web)
-  if (!kIsWeb) {
-    container.read(fcmServiceProvider).initialize();
-  }
 
   // Initialize Background Sync Engine for offline support
   container.read(syncServiceProvider).startListening();

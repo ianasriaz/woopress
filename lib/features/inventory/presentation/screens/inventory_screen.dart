@@ -369,10 +369,9 @@ class InventoryScreen extends ConsumerWidget {
 
   Widget _buildFilterChips(BuildContext context, WidgetRef ref) {
     final state = ref.watch(inventoryControllerProvider).value;
-    final currentFilter = state?.stockStatus ?? 'all';
+    final currentFilter = state?.stockStatus ?? 'instock';
 
     final filters = [
-      {"label": "ALL", "value": "all"},
       {"label": "IN STOCK", "value": "instock"},
       {"label": "OUT OF STOCK", "value": "outofstock"},
     ];

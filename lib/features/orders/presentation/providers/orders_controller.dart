@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:woo_press/features/dashboard/presentation/providers/dashboard_controller.dart';
+import 'package:woo_press/features/inventory/presentation/providers/inventory_controller.dart';
 import '../../data/orders_repository.dart';
 import '../../domain/models/order_model.dart';
 
@@ -129,7 +130,19 @@ class OrdersController extends AsyncNotifier<OrdersState> {
 
     // Start Updating State
     final newUpdating = Set<int>.from(current.updatingOrderIds)..add(orderId);
-    state = AsyncValue.data(current.copyWith(updatingOrderIds: newUpdating));
+    
+    // Optimistic UI Update
+    final updatedOrders = current.orders.map((o) {
+      if (o.id == orderId) {
+        return o.copyWith(status: status);
+      }
+      return o;
+    }).toList();
+    
+    state = AsyncValue.data(current.copyWith(
+      orders: updatedOrders,
+      updatingOrderIds: newUpdating,
+    ));
 
     try {
       final repo = ref.read(ordersRepositoryProvider);
@@ -162,6 +175,16 @@ class OrdersController extends AsyncNotifier<OrdersState> {
     state = await AsyncValue.guard(() async {
       final repo = ref.read(ordersRepositoryProvider);
       final freshOrders = await repo.fetchOrders(page: 1, search: current?.search, status: current?.status);
+      
+      // Real-time stock decrement: identify completely new orders and process them
+      if (current != null && current.orders.isNotEmpty) {
+        final oldIds = current.orders.map((e) => e.id).toSet();
+        final newOrders = freshOrders.where((o) => !oldIds.contains(o.id)).toList();
+        for (var order in newOrders) {
+          ref.read(inventoryControllerProvider.notifier).processNewOrder(order);
+        }
+      }
+
       return OrdersState(
         orders: freshOrders,
         page: 1,

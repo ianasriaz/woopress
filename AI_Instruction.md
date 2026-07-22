@@ -40,6 +40,27 @@ Do **NOT** put network logic inside UI files. All data must flow: `API/Cache -> 
 - **Implementation:** Uses FCM. Notifications are caught in `main.dart` via `_firebaseMessagingBackgroundHandler`. 
 - **Storage:** Because we lack a central backend server to store notification history, notifications are saved locally as a JSON list inside `flutter_secure_storage` (`notifications_history_v1`) so the user can view a historical feed.
 
+### Dashboard Sales Charts (Client-Side Patching)
+- **Implementation:** Weekly, Monthly, and Yearly sales charts use `fl_chart`. Data is fetched from WooCommerce's aggregated `/reports/sales` endpoint rather than querying raw orders to prevent server RAM spikes.
+- **Client-Side Live Patching:** To keep the chart real-time without constantly pinging the server for updates, the app dynamically injects the `todayRevenue` (from `StoreStats`) into the last data point of the chart on the Flutter side. The server is completely unaware that the chart is updating live.
+
+### Real-Time Offline Stock Deduction
+- **Implementation:** Real-time stock drops happen completely on the client side without refreshing the API.
+- **How it works:** When a push notification triggers a refresh of the `OrdersController`, it isolates the newly arrived orders and pipes them directly into `InventoryController.processNewOrder()`. The app then mathematically subtracts the ordered items from the local `stockQuantity` state.
+- **Zero-Load Low Stock Filter:** The inventory UI includes a `LOW STOCK (N)` filter. To calculate `N` without downloading any products, `InventoryRepository` executes a lightweight HEAD-style request (`per_page=1&_fields=id`) and strictly reads the `X-WP-Total` header.
+
+### Offline Auth & Gatekeeper Resilience
+- **Implementation:** The app securely maintains offline access when internet drops.
+- **How it works:** On boot, `AuthNotifier` attempts to verify the Keygen license. If the network throws a `DioException` timeout or 500 error, `GatekeeperRepository` traps it and safely returns `GatekeeperStatus.networkError`. Because `hasCredentials()` is true (from secure storage), the app assumes the user is authenticated and correctly routes them directly to the Offline Dashboard. It only revokes access on explicit 4xx HTTP responses.
+
+### Robust Initial Routing & Unified Splash Screen
+- **Implementation:** Replaced a distributed splashing approach with a unified `/splash` route and strict state-based routing.
+- **How it works:** `GatekeeperScreen` is now strictly an input screen. The app holds the user on the `SplashScreen` while `AuthNotifier.checkExistingCredentials()` executes (including a forced update check and Keygen license validation). Once `checkExistingCredentials()` updates the state (`authenticated`, `needsUpdate`, `needsGatekeeper`, `unauthenticated`), GoRouter redirects the user to the correct screen instantly without UI flickering.
+
+### Premium UI/UX Enforcement (Minimalism & Skeleton Shimmers)
+- **Implementation:** UI components are continuously refined to maintain a minimalist, non-colorful aesthetic and buttery experience.
+- **Example (Order Status Picker):** Migrated from heavily colored status blocks to a clean monochromatic design with soft borders and `InkWell` ripples. Only highly destructive actions (like "CANCEL ORDER") use distinct vibrant colors (red) to guide the user's attention.
+- **Example (Skeleton Loading):** The app uses the `shimmer` package for initial data fetches (e.g., `SkeletonOrderCard`, `DashboardSkeletonView`) rather than `CircularProgressIndicator`. This maintains the UI structure during loading, providing a smoother, perception-of-speed upgrade and avoiding layout jumps.
 ## 4. Instructions for Future AI Agents
 1. **Never Duplicate Offline Logic:** If you need to make a new feature work offline, extend `database_helper.dart` and `sync_service.dart`. Do not create a new database engine.
 2. **Web Compatibility:** Always remember this app is tested via `flutter run -d chrome`. Any new native packages (hardware, cameras, DBs) must check `if (kIsWeb)` to avoid crashing the debugging session.

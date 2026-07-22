@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/inventory_repository.dart';
 import '../../domain/models/product_model.dart';
+import '../../../orders/domain/models/order_model.dart';
 
 class InventoryState {
   final List<ProductModel> products;
@@ -15,7 +16,7 @@ class InventoryState {
     required this.page,
     required this.hasMore,
     this.search,
-    this.stockStatus = 'all',
+    this.stockStatus = 'instock',
   });
 
   InventoryState copyWith({
@@ -40,12 +41,50 @@ class InventoryController extends AsyncNotifier<InventoryState> {
   @override
   Future<InventoryState> build() async {
     final repo = ref.watch(inventoryRepositoryProvider);
-    final initialProducts = await repo.fetchProducts(page: 1);
+    final initialProducts = await repo.fetchProducts(page: 1, stockStatus: 'instock');
+
     return InventoryState(
       products: initialProducts,
       page: 1,
       hasMore: initialProducts.length == 20,
+      stockStatus: 'instock',
     );
+  }
+
+  void processNewOrder(OrderModel newOrder) {
+    final currentState = state.value;
+    if (currentState == null) return;
+    
+    int newLowStockAlerts = 0;
+
+    var updatedProducts = currentState.products.map((p) {
+      int droppedQuantity = 0;
+      for (var item in newOrder.items) {
+        if (item.productId == p.id) {
+          droppedQuantity += (item.quantity as num).toInt();
+        }
+      }
+      
+      if (droppedQuantity > 0 && p.manageStock && p.stockQuantity != null) {
+        final newStock = p.stockQuantity! - droppedQuantity;
+        final newStatus = newStock > 0 ? 'instock' : 'outofstock';
+        
+        // If stock drops below threshold (assume <= 2), increment alert count
+        if (p.stockQuantity! > 2 && newStock <= 2) {
+          newLowStockAlerts += 1;
+        }
+
+        return p.copyWith(
+          stockQuantity: newStock,
+          stockStatus: newStatus,
+        );
+      }
+      return p;
+    }).toList();
+    
+    state = AsyncValue.data(currentState.copyWith(
+      products: updatedProducts,
+    ));
   }
 
   Future<void> loadMore() async {
