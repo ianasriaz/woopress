@@ -7,6 +7,10 @@
 -keep class io.flutter.plugins.**  { *; }
 
 # Firebase
+-keep class io.flutter.plugins.firebase.messaging.** { *; }
+-keep class io.flutter.plugins.firebase.core.** { *; }
+-dontwarn io.flutter.plugins.firebase.messaging.**
+-dontwarn io.flutter.plugins.firebase.core.**
 -keep class com.google.firebase.** { *; }
 -dontwarn com.google.firebase.**
 

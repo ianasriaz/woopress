@@ -39,6 +39,7 @@ Do **NOT** put network logic inside UI files. All data must flow: `API/Cache -> 
 ### Push Notifications
 - **Implementation:** Uses FCM. Notifications are caught in `main.dart` via `_firebaseMessagingBackgroundHandler`. 
 - **Storage:** Because we lack a central backend server to store notification history, notifications are saved locally as a JSON list inside `flutter_secure_storage` (`notifications_history_v1`) so the user can view a historical feed.
+- **Release Build Rules (R8/Proguard):** To prevent release APK builds from breaking notifications, custom rules are included in `android/app/proguard-rules.pro` to keep `io.flutter.plugins.firebase.messaging.**` and `com.google.firebase.**`. A `keep.xml` is also added at `android/app/src/main/res/raw/keep.xml` to prevent the `cash_register.mp3` custom sound from being stripped by `isShrinkResources = true`.
 
 ### Dashboard Sales Charts (Client-Side Patching)
 - **Implementation:** Weekly, Monthly, and Yearly sales charts use `fl_chart`. Data is fetched from WooCommerce's aggregated `/reports/sales` endpoint rather than querying raw orders to prevent server RAM spikes.
