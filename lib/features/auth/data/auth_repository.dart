@@ -10,6 +10,7 @@ import '../../../../core/storage/secure_storage.dart';
 import '../../gatekeeper/data/gatekeeper_repository.dart';
 import 'dart:async';
 import 'package:firebase_database/firebase_database.dart';
+import '../../notifications/data/fcm_service.dart';
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) {
   final storage = ref.watch(secureStorageProvider);
@@ -151,6 +152,7 @@ class AuthNotifier extends Notifier<AuthState> {
         }
         // If status is allowed OR networkError, proceed to authenticated.
         // This allows the app to boot into Offline Mode without internet.
+        ref.read(fcmServiceProvider).reSyncNotifications();
         state = AuthState.authenticated;
       } else {
         state = AuthState.needsGatekeeper;
@@ -188,7 +190,7 @@ class AuthNotifier extends Notifier<AuthState> {
       if (isValid) {
         final finalDomain = await repo._storage.read(key: 'baseUrl');
 
-
+        ref.read(fcmServiceProvider).reSyncNotifications();
         ref.read(dashboardControllerProvider.notifier).refresh();
         state = AuthState.authenticated;
         return null; // Success

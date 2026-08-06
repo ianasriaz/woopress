@@ -23,13 +23,64 @@ class InventoryScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        title: Text('Inventory', style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w900)),
+        title: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              flex: 1,
+              child: Text(
+                'Inventory',
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurface,
+                  fontWeight: FontWeight.w900,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (inventoryAsync.value != null && inventoryAsync.value!.products.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              Expanded(
+                flex: 1,
+                child: Builder(
+                  builder: (context) {
+                    final latestUpdate = inventoryAsync.value!.products
+                        .map((p) => p.dateModified ?? p.dateCreated)
+                        .reduce((a, b) => a.isAfter(b) ? a : b);
+                    return Align(
+                      alignment: Alignment.centerRight,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(LucideIcons.refreshCw, size: 12, color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5)),
+                          const SizedBox(width: 5),
+                          Flexible(
+                            child: Text(
+                              _formatCompactTimestamp(latestUpdate),
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.65),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ],
+        ),
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         iconTheme: IconThemeData(color: Theme.of(context).colorScheme.onSurface),
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(110),
           child: Padding(
-            padding: const EdgeInsets.only(left: 20, right: 20, bottom: 16),
+            padding: const EdgeInsets.only(left: 20, right: 20, bottom: 12),
             child: Column(
               children: [
                 _buildSearchBar(context, ref),
@@ -191,6 +242,7 @@ class InventoryScreen extends ConsumerWidget {
 
   Widget _buildProductCard(BuildContext context, WidgetRef ref, ProductModel product) {
     final inStock = product.stockStatus == 'instock';
+    final lastUpdated = product.dateModified ?? product.dateCreated;
     
     return GestureDetector(
       onTap: () {
@@ -201,135 +253,214 @@ class InventoryScreen extends ConsumerWidget {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: Theme.of(context).colorScheme.surface,
-          border: Border.all(color: Theme.of(context).dividerColor, width: 1.5),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 60,
-              height: 60,
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
-              ),
-              child: product.imageUrl != null 
-                  ? CachedNetworkImage(
-                      imageUrl: product.imageUrl!,
-                      fit: BoxFit.cover,
-                      placeholder: (context, url) => Shimmer.fromColors(
-                        baseColor: Theme.of(context).colorScheme.surfaceVariant,
-                        highlightColor: Theme.of(context).dividerColor,
-                        child: Container(color: Theme.of(context).colorScheme.onSurface),
-                      ),
-                      errorWidget: (context, url, error) => Icon(LucideIcons.image, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.1)),
-                    )
-                  : Icon(LucideIcons.image, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.1)),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.5), width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.02),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
             ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    product.name,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurface,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    width: 64,
+                    height: 64,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.3),
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                    child: product.imageUrl != null 
+                        ? CachedNetworkImage(
+                            imageUrl: product.imageUrl!,
+                            fit: BoxFit.cover,
+                            placeholder: (context, url) => Shimmer.fromColors(
+                              baseColor: Theme.of(context).colorScheme.surfaceVariant,
+                              highlightColor: Theme.of(context).dividerColor,
+                              child: Container(color: Theme.of(context).colorScheme.onSurface),
+                            ),
+                            errorWidget: (context, url, error) => Icon(LucideIcons.image, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.15)),
+                          )
+                        : Icon(LucideIcons.image, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.15)),
                   ),
-                  const SizedBox(height: 6),
-                  Row(
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: inStock ? const Color(0xFF34C759).withOpacity(0.1) : const Color(0xFFFF3B30).withOpacity(0.1),
-                          border: Border.all(color: inStock ? const Color(0xFF34C759).withOpacity(0.5) : const Color(0xFFFF3B30).withOpacity(0.5)),
+                      Text(
+                        product.name,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurface,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.3,
                         ),
-                        child: Text(
-                          inStock ? 'IN STOCK' : 'OUT OF STOCK',
-                          style: TextStyle(
-                            color: inStock ? const Color(0xFF34C759) : const Color(0xFFFF3B30),
-                            fontSize: 8,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      if (product.onSale) ...[
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFFCC00).withOpacity(0.1),
-                            border: Border.all(color: const Color(0xFFFFCC00).withOpacity(0.5)),
-                          ),
-                          child: Text(
-                            'SALE',
-                            style: TextStyle(
-                              color: Color(0xFFFFCC00),
-                              fontSize: 8,
-                              fontWeight: FontWeight.w900,
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: inStock ? const Color(0xFF34C759).withOpacity(0.1) : const Color(0xFFFF3B30).withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: inStock ? const Color(0xFF34C759).withOpacity(0.4) : const Color(0xFFFF3B30).withOpacity(0.4)),
+                            ),
+                            child: Text(
+                              inStock ? 'IN STOCK' : 'OUT OF STOCK',
+                              style: TextStyle(
+                                color: inStock ? const Color(0xFF34C759) : const Color(0xFFFF3B30),
+                                fontSize: 9,
+                                fontWeight: FontWeight.w800,
+                              ),
                             ),
                           ),
-                        ),
-                      ],
-                      const SizedBox(width: 10),
-                      Text(
-                        product.stockQuantity != null ? '${product.stockQuantity} UNITS' : '-',
+                          if (product.onSale) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF34C759).withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(color: const Color(0xFF34C759).withValues(alpha: 0.4)),
+                              ),
+                              child: const Text(
+                                'ON SALE',
+                                style: TextStyle(
+                                  color: Color(0xFF34C759),
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                          ],
+                          const SizedBox(width: 8),
+                          Text(
+                            product.stockQuantity != null ? '${product.stockQuantity} Units' : '-',
+                            style: TextStyle(
+                              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      'Rs. ${product.price}',
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurface,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.05),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        product.type.toUpperCase(),
                         style: TextStyle(
-                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.3),
+                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Divider(color: Theme.of(context).dividerColor.withOpacity(0.3), height: 1),
+            const SizedBox(height: 10),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(LucideIcons.calendar, size: 11, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.35)),
+                          const SizedBox(width: 5),
+                          Expanded(
+                            child: Text(
+                              'Added: ${_formatCompactTimestamp(product.dateCreated)}',
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          Icon(LucideIcons.clock, size: 11, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4)),
+                          const SizedBox(width: 5),
+                          Expanded(
+                            child: Text(
+                              'Updated: ${_formatCompactTimestamp(lastUpdated)} (${product.updateCount})',
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.55),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.04),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(LucideIcons.shoppingBag, size: 12, color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5)),
+                      const SizedBox(width: 5),
+                      Text(
+                        '${product.totalSales} SOLD',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
                           fontSize: 10,
                           fontWeight: FontWeight.w800,
                         ),
                       ),
                     ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Text(
-                        DateFormat('MMM dd, yyyy • hh:mm a').format(product.dateCreated),
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.2),
-                          fontSize: 9,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        '🛍️ ${product.totalSales} SOLD',
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
-                          fontSize: 9,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  'Rs. ${product.price}',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurface,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -0.5,
-                  ),
-                ),
-                Text(
-                  product.type.toUpperCase(),
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.2),
-                    fontSize: 8,
-                    fontWeight: FontWeight.w800,
                   ),
                 ),
               ],
@@ -421,10 +552,30 @@ class InventoryScreen extends ConsumerWidget {
       baseColor: Theme.of(context).colorScheme.surface,
       highlightColor: Theme.of(context).dividerColor,
       child: Container(
-        height: 96,
-        color: Theme.of(context).colorScheme.onSurface,
+        height: 132,
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.onSurface,
+          borderRadius: BorderRadius.circular(12),
+        ),
       ),
     );
+  }
+
+  String _formatCompactTimestamp(DateTime date) {
+    final now = DateTime.now();
+    final diff = now.difference(date);
+
+    if (diff.inSeconds < 60) {
+      return 'Just now';
+    } else if (diff.inMinutes < 60 && date.day == now.day) {
+      return '${diff.inMinutes}m ago';
+    } else if (diff.inHours < 24 && date.day == now.day) {
+      return 'Today, ${DateFormat('hh:mm a').format(date)}';
+    } else if (diff.inDays < 2 && (now.day - date.day).abs() == 1) {
+      return 'Yesterday, ${DateFormat('hh:mm a').format(date)}';
+    } else {
+      return DateFormat('MMM dd, yyyy • hh:mm a').format(date);
+    }
   }
 
   void _showQuickEditSheet(BuildContext context, WidgetRef ref, ProductModel product) {

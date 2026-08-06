@@ -86,8 +86,8 @@ class FCMService {
       FirebaseMessaging.onMessage.listen((RemoteMessage message) {
         HapticFeedback.heavyImpact();
         
-        final title = message.notification?.title ?? message.data['title'] ?? "New Order Received";
-        final body = message.notification?.body ?? message.data['body'] ?? "Check your dashboard for details.";
+        final title = message.notification?.title ?? message.data['title'] ?? "🎉 New Order";
+        final body = message.notification?.body ?? message.data['body'] ?? "A customer just placed a new order.";
         final orderId = message.data['order_id']?.toString();
 
         final notificationModel = NotificationModel(

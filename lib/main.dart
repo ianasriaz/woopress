@@ -8,6 +8,63 @@ import 'package:firebase_core/firebase_core.dart';
 import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'core/network/sync_service.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'features/notifications/data/fcm_service.dart';
+
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp(
+    options: const FirebaseOptions(
+      apiKey: 'AIzaSyCmsdZtC_Uld2WuG4clHJA5DNmy_lsfUn0',
+      appId: '1:340044289106:android:600b27e8c6a4f13446fb8b',
+      messagingSenderId: '340044289106',
+      projectId: 'wooexpress',
+      databaseURL: 'https://wooexpress-default-rtdb.asia-southeast1.firebasedatabase.app',
+    ),
+  );
+  try {
+    const storage = FlutterSecureStorage();
+    const storageKey = 'notifications_history_v1';
+    const maxNotifications = 50;
+
+    final title = message.notification?.title ?? message.data['title'] ?? "🎉 New Order";
+    final body = message.notification?.body ?? message.data['body'] ?? "A customer just placed a new order.";
+    final orderId = message.data['order_id']?.toString();
+
+    final newNotif = {
+      'id': message.messageId ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      'title': title,
+      'body': body,
+      'timestamp': DateTime.now().toIso8601String(),
+      'orderId': orderId,
+      'isRead': false,
+    };
+
+    final jsonStr = await storage.read(key: storageKey);
+    List<dynamic> list = [];
+    if (jsonStr != null && jsonStr.isNotEmpty) {
+      list = json.decode(jsonStr) as List<dynamic>;
+    }
+
+    if (orderId != null && orderId.isNotEmpty) {
+      if (!list.any((n) => n['orderId'] == orderId)) {
+        list.insert(0, newNotif);
+      }
+    } else {
+      if (!list.any((n) => n['id'] == newNotif['id'])) {
+        list.insert(0, newNotif);
+      }
+    }
+
+    if (list.length > maxNotifications) {
+      list = list.sublist(0, maxNotifications);
+    }
+
+    await storage.write(key: storageKey, value: json.encode(list));
+  } catch (e) {
+    print("Background notification saving error: $e");
+  }
+}
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -22,6 +79,7 @@ void main() async {
         databaseURL: 'https://wooexpress-default-rtdb.asia-southeast1.firebasedatabase.app',
       ),
     );
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
   } catch (e) {
     print('Firebase Init Error: $e');
   }
@@ -30,6 +88,8 @@ void main() async {
 
   // Initialize Background Sync Engine for offline support
   container.read(syncServiceProvider).startListening();
+  // Initialize FCM Service & ask for runtime push notification permissions immediately
+  container.read(fcmServiceProvider).initialize();
 
   runApp(
     UncontrolledProviderScope(

@@ -50,6 +50,7 @@ class AuthInterceptor extends Interceptor {
     }
     options.headers['Accept'] = 'application/json';
     options.headers['Connection'] = 'keep-alive';
+    options.headers['X-WooPress-Request'] = 'true';
     
     if (_cfId != null && _cfSecret != null) {
       options.headers['CF-Access-Client-Id'] = _cfId;

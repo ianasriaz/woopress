@@ -769,7 +769,8 @@ class _OrderCard extends ConsumerWidget {
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
-        border: Border.all(color: Theme.of(context).dividerColor),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.08)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -785,14 +786,7 @@ class _OrderCard extends ConsumerWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SourceBadge(source: order.orderSource, isSmall: true),
-                  const SizedBox(width: 8),
-                  _StatusChip(status: order.status),
-                ],
-              ),
+              _StatusChip(status: order.status),
             ],
           ),
           const SizedBox(height: 12),
@@ -818,6 +812,7 @@ class _OrderCard extends ConsumerWidget {
                 _formatTime(order.dateCreated),
                 style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4), fontSize: 11, fontWeight: FontWeight.w600),
               ),
+              _InlineSource(source: order.orderSource),
             ],
           ),
           const SizedBox(height: 8),
@@ -869,26 +864,31 @@ class _OrderCard extends ConsumerWidget {
                   child: Container(
                     height: 48,
                     decoration: BoxDecoration(
-                      color: order.status == 'completed' ? const Color(0xFF34C759) : Theme.of(context).colorScheme.primary,
-                      borderRadius: BorderRadius.circular(4),
+                      color: order.status == 'completed'
+                          ? const Color(0xFF34C759)
+                          : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.06),
+                      borderRadius: BorderRadius.circular(8),
+                      border: order.status == 'completed'
+                          ? null
+                          : Border.all(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.15)),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         ref.watch(ordersControllerProvider).value?.updatingOrderIds.contains(order.id) ?? false
-                          ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                          ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: order.status == 'completed' ? Colors.white : Theme.of(context).colorScheme.onSurface, strokeWidth: 2))
                           : Row(
                               children: [
                                 Icon(
                                   order.status == 'completed' ? LucideIcons.checkCircle : LucideIcons.edit3, 
-                                  color: Colors.white, 
+                                  color: order.status == 'completed' ? Colors.white : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.8),
                                   size: 16
                                 ),
-                                const SizedBox(width: 12),
+                                const SizedBox(width: 10),
                                 Text(
-                                  order.status == 'completed' ? "SHIPPED" : "UPDATE STATUS",
-                                  style: const TextStyle(
-                                    color: Colors.white,
+                                  order.status == 'completed' ? "SHIPPED" : order.status.replaceAll('-', ' ').toUpperCase(),
+                                  style: TextStyle(
+                                    color: order.status == 'completed' ? Colors.white : Theme.of(context).colorScheme.onSurface,
                                     fontSize: 12,
                                     fontWeight: FontWeight.w900,
                                     letterSpacing: 1.0,
@@ -910,11 +910,11 @@ class _OrderCard extends ConsumerWidget {
                     width: 48,
                     decoration: BoxDecoration(
                       color: Theme.of(context).colorScheme.surface,
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3)),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.3)),
                     ),
                     child: Center(
-                      child: Icon(LucideIcons.phone, size: 20, color: Theme.of(context).colorScheme.primary),
+                      child: Icon(LucideIcons.phone, size: 20, color: Theme.of(context).colorScheme.onSurface),
                     ),
                   ),
                 ),
@@ -926,8 +926,8 @@ class _OrderCard extends ConsumerWidget {
                     width: 48,
                     decoration: BoxDecoration(
                       color: Theme.of(context).colorScheme.surface,
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: const Color(0xFF25D366).withValues(alpha: 0.3)),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0xFF25D366).withValues(alpha: 0.35)),
                     ),
                     child: Center(
                       child: const FaIcon(FontAwesomeIcons.whatsapp, size: 20, color: Color(0xFF25D366)),
@@ -1194,25 +1194,20 @@ class _StatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Color color;
-    switch (status) {
-      case 'completed': color = const Color(0xFF34C759); break;
-      case 'processing': color = const Color(0xFF007AFF); break;
-      case 'pending': color = const Color(0xFFFF9500); break;
-      case 'on-hold': color = const Color(0xFFFFCC00); break;
-      case 'cancelled': color = const Color(0xFFFF3B30); break;
-      default: color = Colors.white24;
-    }
+    final isCompleted = status == 'completed';
+    final color = isCompleted ? const Color(0xFF34C759) : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.75);
+    final bgColor = isCompleted ? const Color(0xFF34C759).withValues(alpha: 0.15) : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.06);
+    final borderColor = isCompleted ? const Color(0xFF34C759).withValues(alpha: 0.4) : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.15);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.15),
+        color: bgColor,
         borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: color.withValues(alpha: 0.5)),
+        border: Border.all(color: borderColor),
       ),
       child: Text(
-        status.toUpperCase(),
+        isCompleted ? 'SHIPPED' : status.replaceAll('-', ' ').toUpperCase(),
         style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 0.5),
       ),
     );
@@ -1287,6 +1282,45 @@ Please confirm your order by replying to this message. Thank you!""";
   }
 }
 
+class _InlineSource extends StatelessWidget {
+  final String source;
+  const _InlineSource({required this.source});
+
+  @override
+  Widget build(BuildContext context) {
+    if (source.isEmpty) return const SizedBox.shrink();
+    dynamic icon;
+    bool isFa = false;
+    String lower = source.toLowerCase();
+    if (lower == 'facebook') { icon = FontAwesomeIcons.facebook; isFa = true; }
+    else if (lower == 'instagram') { icon = FontAwesomeIcons.instagram; isFa = true; }
+    else if (lower == 'google') { icon = FontAwesomeIcons.google; isFa = true; }
+    else if (lower == 'tiktok') { icon = FontAwesomeIcons.tiktok; isFa = true; }
+    else if (lower == 'youtube') { icon = FontAwesomeIcons.youtube; isFa = true; }
+    else if (lower == 'pinterest') { icon = FontAwesomeIcons.pinterest; isFa = true; }
+    else if (lower == 'twitter' || lower == 'x') { icon = FontAwesomeIcons.xTwitter; isFa = true; }
+    else if (lower == 'bing' || lower == 'yahoo' || lower == 'organic') { icon = LucideIcons.search; }
+    else if (lower == 'direct' || lower == 'typein' || lower == 'admin') { icon = LucideIcons.mousePointerClick; }
+    else { icon = LucideIcons.link; }
+
+    final color = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const SizedBox(width: 12),
+        if (isFa) FaIcon(icon, size: 10, color: color) else Icon(icon, size: 12, color: color),
+        const SizedBox(width: 4),
+        Text(
+          source,
+          style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w600),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
+    );
+  }
+}
+
 class SourceBadge extends StatelessWidget {
   final String source;
   final bool isSmall;
@@ -1303,48 +1337,40 @@ class SourceBadge extends StatelessWidget {
     if (lower == 'facebook') {
       icon = FontAwesomeIcons.facebook;
       isFa = true;
-      color = const Color(0xFF1877F2);
     } else if (lower == 'instagram') {
       icon = FontAwesomeIcons.instagram;
       isFa = true;
-      color = const Color(0xFFE1306C);
     } else if (lower == 'google') {
       icon = FontAwesomeIcons.google;
       isFa = true;
-      color = const Color(0xFFDB4437);
     } else if (lower == 'tiktok') {
       icon = FontAwesomeIcons.tiktok;
       isFa = true;
-      color = Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black;
     } else if (lower == 'youtube') {
       icon = FontAwesomeIcons.youtube;
       isFa = true;
-      color = const Color(0xFFFF0000);
     } else if (lower == 'pinterest') {
       icon = FontAwesomeIcons.pinterest;
       isFa = true;
-      color = const Color(0xFFE60023);
     } else if (lower == 'twitter' || lower == 'x') {
       icon = FontAwesomeIcons.xTwitter;
       isFa = true;
-      color = Theme.of(context).brightness == Brightness.dark ? Colors.white : Colors.black;
     } else if (lower == 'bing' || lower == 'yahoo' || lower == 'organic') {
       icon = LucideIcons.search;
-      color = Theme.of(context).colorScheme.primary;
     } else if (lower == 'direct' || lower == 'typein' || lower == 'admin') {
       icon = LucideIcons.mousePointerClick;
-      color = Theme.of(context).colorScheme.primary;
     } else {
       icon = LucideIcons.link;
-      color = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5);
     }
+
+    color = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.75);
 
     return Container(
       padding: EdgeInsets.symmetric(horizontal: isSmall ? 8 : 10, vertical: isSmall ? 4 : 6),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
+        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(isSmall ? 4 : 6),
-        border: Border.all(color: color.withValues(alpha: 0.2)),
+        border: Border.all(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.12)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

@@ -10,6 +10,7 @@ class InventoryState {
   final bool hasMore;
   final String? search;
   final String? stockStatus;
+  final DateTime? lastSyncedAt;
 
   InventoryState({
     required this.products,
@@ -17,6 +18,7 @@ class InventoryState {
     required this.hasMore,
     this.search,
     this.stockStatus = 'instock',
+    this.lastSyncedAt,
   });
 
   InventoryState copyWith({
@@ -25,6 +27,7 @@ class InventoryState {
     bool? hasMore,
     String? search,
     String? stockStatus,
+    DateTime? lastSyncedAt,
   }) {
     return InventoryState(
       products: products ?? this.products,
@@ -32,6 +35,7 @@ class InventoryState {
       hasMore: hasMore ?? this.hasMore,
       search: search ?? this.search,
       stockStatus: stockStatus ?? this.stockStatus,
+      lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
     );
   }
 }
@@ -48,6 +52,7 @@ class InventoryController extends AsyncNotifier<InventoryState> {
       page: 1,
       hasMore: initialProducts.length == 20,
       stockStatus: 'instock',
+      lastSyncedAt: DateTime.now(),
     );
   }
 
@@ -77,6 +82,8 @@ class InventoryController extends AsyncNotifier<InventoryState> {
         return p.copyWith(
           stockQuantity: newStock,
           stockStatus: newStatus,
+          dateModified: DateTime.now(),
+          updateCount: p.updateCount + 1,
         );
       }
       return p;
@@ -107,6 +114,7 @@ class InventoryController extends AsyncNotifier<InventoryState> {
           products: [...currentState.products, ...newProducts],
           page: nextPage,
           hasMore: newProducts.length == 20,
+          lastSyncedAt: DateTime.now(),
         ),
       );
     } catch (e) {
@@ -131,6 +139,7 @@ class InventoryController extends AsyncNotifier<InventoryState> {
           hasMore: products.length == 20,
           search: query,
           stockStatus: currentState.stockStatus,
+          lastSyncedAt: DateTime.now(),
         ));
       } catch (e) {
         state = AsyncValue.error(e, StackTrace.current);
@@ -153,6 +162,7 @@ class InventoryController extends AsyncNotifier<InventoryState> {
         hasMore: products.length == 20,
         search: currentState.search,
         stockStatus: status,
+        lastSyncedAt: DateTime.now(),
       ));
     } catch (e) {
       state = AsyncValue.error(e, StackTrace.current);
@@ -163,7 +173,22 @@ class InventoryController extends AsyncNotifier<InventoryState> {
     final currentState = state.value;
     if (currentState == null) return;
 
-    final resolvedStatus = manageStock ? (newStock! > 0 ? 'instock' : 'outofstock') : newStatus!;
+    String resolvedStatus;
+    int? resolvedStock = newStock;
+
+    if (manageStock) {
+      if (newStatus == 'outofstock' || (newStock != null && newStock <= 0)) {
+        resolvedStatus = 'outofstock';
+        resolvedStock = 0;
+      } else {
+        resolvedStatus = 'instock';
+        resolvedStock = (newStock != null && newStock > 0) ? newStock : 1;
+      }
+    } else {
+      resolvedStatus = newStatus ?? 'instock';
+      resolvedStock = null;
+    }
+
     final repo = ref.read(inventoryRepositoryProvider);
 
     // 1. Instant Optimistic UI
@@ -173,9 +198,11 @@ class InventoryController extends AsyncNotifier<InventoryState> {
           price: newSalePrice.isNotEmpty ? newSalePrice : newRegularPrice,
           regularPrice: newRegularPrice,
           salePrice: newSalePrice,
-          stockQuantity: manageStock ? newStock : null,
+          stockQuantity: manageStock ? resolvedStock : null,
           stockStatus: resolvedStatus,
           manageStock: manageStock,
+          dateModified: DateTime.now(),
+          updateCount: p.updateCount + 1,
         );
       }
       return p;
@@ -193,7 +220,7 @@ class InventoryController extends AsyncNotifier<InventoryState> {
       };
       
       if (manageStock) {
-        updateData['stock_quantity'] = newStock;
+        updateData['stock_quantity'] = resolvedStock;
       } else {
         updateData['stock_quantity'] = null; // Important: Clear quantity if not managing stock
       }
@@ -211,8 +238,37 @@ class InventoryController extends AsyncNotifier<InventoryState> {
   }
 
   Future<void> triggerVariationUpdate(int productId, int variationId, String newRegularPrice, String newSalePrice, {int? newStock, String? newStatus, required bool manageStock}) async {
-    final resolvedStatus = manageStock ? (newStock! > 0 ? 'instock' : 'outofstock') : newStatus!;
+    String resolvedStatus;
+    int? resolvedStock = newStock;
+
+    if (manageStock) {
+      if (newStatus == 'outofstock' || (newStock != null && newStock <= 0)) {
+        resolvedStatus = 'outofstock';
+        resolvedStock = 0;
+      } else {
+        resolvedStatus = 'instock';
+        resolvedStock = (newStock != null && newStock > 0) ? newStock : 1;
+      }
+    } else {
+      resolvedStatus = newStatus ?? 'instock';
+      resolvedStock = null;
+    }
+
     final repo = ref.read(inventoryRepositoryProvider);
+    final currentState = state.value;
+    if (currentState != null) {
+      final updatedProducts = currentState.products.map<ProductModel>((p) {
+        if (p.id == productId) {
+          return p.copyWith(
+            dateModified: DateTime.now(),
+            updateCount: p.updateCount + 1,
+          );
+        }
+        return p;
+      }).toList();
+      state = AsyncValue.data(currentState.copyWith(products: updatedProducts));
+    }
+
     try {
       // Atomic Payload for Variations
       final Map<String, dynamic> updateData = {
@@ -223,7 +279,7 @@ class InventoryController extends AsyncNotifier<InventoryState> {
       };
       
       if (manageStock) {
-        updateData['stock_quantity'] = newStock;
+        updateData['stock_quantity'] = resolvedStock;
       } else {
         updateData['stock_quantity'] = null;
       }
@@ -231,10 +287,10 @@ class InventoryController extends AsyncNotifier<InventoryState> {
       await repo.updateVariation(productId, variationId, updateData);
       
       await Future.delayed(const Duration(milliseconds: 300));
-      // Invalidate the variations list for this specific product to clear the cache
       ref.invalidate(productVariationsProvider(productId));
-      ref.invalidateSelf(); 
+      await refresh(); 
     } catch (e) {
+      ref.invalidateSelf();
       rethrow;
     }
   }
@@ -252,6 +308,7 @@ class InventoryController extends AsyncNotifier<InventoryState> {
         products: products,
         page: 1,
         hasMore: products.length == 20,
+        lastSyncedAt: DateTime.now(),
       );
     });
   }

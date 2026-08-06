@@ -9,6 +9,8 @@ class ProductModel {
   final String stockStatus; // 'instock', 'outofstock'
   final bool manageStock;
   final DateTime dateCreated;
+  final DateTime? dateModified;
+  final int updateCount;
   final int totalSales;
   final bool onSale;
   final String? imageUrl;
@@ -24,6 +26,8 @@ class ProductModel {
     required this.stockStatus,
     required this.manageStock,
     required this.dateCreated,
+    this.dateModified,
+    this.updateCount = 1,
     required this.totalSales,
     required this.onSale,
     this.imageUrl,
@@ -41,6 +45,8 @@ class ProductModel {
       stockStatus: json['stock_status'] ?? 'outofstock',
       manageStock: json['manage_stock'] == true || json['manage_stock']?.toString() == 'yes',
       dateCreated: DateTime.tryParse(json['date_created']?.toString() ?? '') ?? DateTime.now(),
+      dateModified: json['date_modified'] != null ? DateTime.tryParse(json['date_modified'].toString()) : null,
+      updateCount: int.tryParse(json['woopress_update_count']?.toString() ?? '1') ?? 1,
       totalSales: int.tryParse(json['total_sales']?.toString() ?? '0') ?? 0,
       onSale: json['on_sale'] == true,
       imageUrl: (json['images'] != null && (json['images'] as List).isNotEmpty)
@@ -57,6 +63,8 @@ class ProductModel {
     String? stockStatus,
     bool? manageStock,
     bool? onSale,
+    DateTime? dateModified,
+    int? updateCount,
   }) {
     return ProductModel(
       id: id,
@@ -69,6 +77,8 @@ class ProductModel {
       stockStatus: stockStatus ?? this.stockStatus,
       manageStock: manageStock ?? this.manageStock,
       dateCreated: this.dateCreated,
+      dateModified: dateModified ?? this.dateModified,
+      updateCount: updateCount ?? this.updateCount,
       totalSales: this.totalSales,
       onSale: onSale ?? this.onSale,
       imageUrl: imageUrl,
@@ -84,6 +94,8 @@ class VariationModel {
   final int? stockQuantity;
   final String stockStatus;
   final bool manageStock;
+  final DateTime? dateModified;
+  final int updateCount;
   final int totalSales;
   final List<String> attributes;
 
@@ -95,6 +107,8 @@ class VariationModel {
     this.stockQuantity,
     required this.stockStatus,
     required this.manageStock,
+    this.dateModified,
+    this.updateCount = 1,
     required this.totalSales,
     required this.attributes,
   });
@@ -109,6 +123,8 @@ class VariationModel {
       stockQuantity: json['stock_quantity'] as int?,
       stockStatus: json['stock_status'] ?? 'outofstock',
       manageStock: json['manage_stock'] == true || json['manage_stock']?.toString() == 'yes',
+      dateModified: json['date_modified'] != null ? DateTime.tryParse(json['date_modified'].toString()) : null,
+      updateCount: int.tryParse(json['woopress_update_count']?.toString() ?? '1') ?? 1,
       totalSales: int.tryParse(json['total_sales']?.toString() ?? '0') ?? 0,
       attributes: attrs,
     );
