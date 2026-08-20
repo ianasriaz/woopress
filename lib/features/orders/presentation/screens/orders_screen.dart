@@ -346,9 +346,16 @@ class _OrderDetailsSheet extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                "Order #${order.id}",
-                style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 24, fontWeight: FontWeight.w900),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    "Order #${order.id}",
+                    style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 24, fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(width: 10),
+                  _StatusChip(status: order.status),
+                ],
               ),
               GestureDetector(
                 onTap: () => Navigator.pop(context),
@@ -861,43 +868,81 @@ class _OrderCard extends ConsumerWidget {
                     final isUpdating = ref.watch(ordersControllerProvider).value?.updatingOrderIds.contains(order.id) ?? false;
                     if (!isUpdating) _showStatusPicker(context, ref, order);
                   },
-                  child: Container(
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: order.status == 'completed'
-                          ? const Color(0xFF34C759)
-                          : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.06),
-                      borderRadius: BorderRadius.circular(8),
-                      border: order.status == 'completed'
-                          ? null
-                          : Border.all(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.15)),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        ref.watch(ordersControllerProvider).value?.updatingOrderIds.contains(order.id) ?? false
-                          ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: order.status == 'completed' ? Colors.white : Theme.of(context).colorScheme.onSurface, strokeWidth: 2))
-                          : Row(
-                              children: [
-                                Icon(
-                                  order.status == 'completed' ? LucideIcons.checkCircle : LucideIcons.edit3, 
-                                  color: order.status == 'completed' ? Colors.white : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.8),
-                                  size: 16
+                  child: Builder(
+                    builder: (context) {
+                      final isUpdating = ref.watch(ordersControllerProvider).value?.updatingOrderIds.contains(order.id) ?? false;
+                      final isCompleted = order.status == 'completed';
+                      final isCancelled = order.status == 'cancelled';
+
+                      final Color btnBgColor;
+                      final Border? btnBorder;
+                      final Color contentColor;
+                      final IconData btnIcon;
+                      final String btnText;
+
+                      if (isCompleted) {
+                        btnBgColor = const Color(0xFF34C759);
+                        btnBorder = null;
+                        contentColor = Colors.white;
+                        btnIcon = LucideIcons.checkCircle;
+                        btnText = "SHIPPED";
+                      } else if (isCancelled) {
+                        btnBgColor = const Color(0xFFFF3B30).withValues(alpha: 0.12);
+                        btnBorder = Border.all(color: const Color(0xFFFF3B30).withValues(alpha: 0.3));
+                        contentColor = const Color(0xFFFF3B30);
+                        btnIcon = LucideIcons.xCircle;
+                        btnText = "CANCELLED";
+                      } else {
+                        btnBgColor = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.06);
+                        btnBorder = Border.all(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.15));
+                        contentColor = Theme.of(context).colorScheme.onSurface;
+                        btnIcon = LucideIcons.edit3;
+                        btnText = order.status.replaceAll('-', ' ').toUpperCase();
+                      }
+
+                      return Container(
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: btnBgColor,
+                          borderRadius: BorderRadius.circular(8),
+                          border: btnBorder,
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            if (isUpdating)
+                              SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  color: contentColor,
+                                  strokeWidth: 2,
                                 ),
-                                const SizedBox(width: 10),
-                                Text(
-                                  order.status == 'completed' ? "SHIPPED" : order.status.replaceAll('-', ' ').toUpperCase(),
-                                  style: TextStyle(
-                                    color: order.status == 'completed' ? Colors.white : Theme.of(context).colorScheme.onSurface,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w900,
-                                    letterSpacing: 1.0,
+                              )
+                            else
+                              Row(
+                                children: [
+                                  Icon(
+                                    btnIcon,
+                                    color: isCompleted ? Colors.white : contentColor.withValues(alpha: isCancelled ? 1.0 : 0.8),
+                                    size: 16,
                                   ),
-                                ),
-                              ],
-                            ),
-                      ],
-                    ),
+                                  const SizedBox(width: 10),
+                                  Text(
+                                    btnText,
+                                    style: TextStyle(
+                                      color: contentColor,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: 1.0,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                          ],
+                        ),
+                      );
+                    },
                   ),
                 ),
               ),
@@ -1195,9 +1240,25 @@ class _StatusChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isCompleted = status == 'completed';
-    final color = isCompleted ? const Color(0xFF34C759) : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.75);
-    final bgColor = isCompleted ? const Color(0xFF34C759).withValues(alpha: 0.15) : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.06);
-    final borderColor = isCompleted ? const Color(0xFF34C759).withValues(alpha: 0.4) : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.15);
+    final isCancelled = status == 'cancelled';
+
+    final Color color;
+    final Color bgColor;
+    final Color borderColor;
+
+    if (isCompleted) {
+      color = const Color(0xFF34C759);
+      bgColor = const Color(0xFF34C759).withValues(alpha: 0.15);
+      borderColor = const Color(0xFF34C759).withValues(alpha: 0.4);
+    } else if (isCancelled) {
+      color = const Color(0xFFFF3B30);
+      bgColor = const Color(0xFFFF3B30).withValues(alpha: 0.12);
+      borderColor = const Color(0xFFFF3B30).withValues(alpha: 0.3);
+    } else {
+      color = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.75);
+      bgColor = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.06);
+      borderColor = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.15);
+    }
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -1207,7 +1268,11 @@ class _StatusChip extends StatelessWidget {
         border: Border.all(color: borderColor),
       ),
       child: Text(
-        isCompleted ? 'SHIPPED' : status.replaceAll('-', ' ').toUpperCase(),
+        isCompleted
+            ? 'SHIPPED'
+            : isCancelled
+                ? 'CANCELLED'
+                : status.replaceAll('-', ' ').toUpperCase(),
         style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 0.5),
       ),
     );
