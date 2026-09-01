@@ -46,9 +46,12 @@ class DashboardRepository {
       final String yearStr = "${now.year}-01-01";
       final String todayStr = "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
 
+      final startOfTodayLocal = DateTime(now.year, now.month, now.day, 0, 0, 0);
+      final startOfTodayUtc = startOfTodayLocal.toUtc();
+
       // Query sequentially to prevent CPU/RAM spikes on the WooCommerce server
       final reqTodayOrders = await _dio.get('/wp-json/wc/v3/orders', queryParameters: {
-        'after': '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}T00:00:00',
+        'after': startOfTodayUtc.toIso8601String(),
         'per_page': 100,
       });
 
@@ -77,13 +80,33 @@ class DashboardRepository {
           final status = order['status']?.toString() ?? '';
           // Ignore cancelled/failed/refunded/trash. Count everything else including 'pending' so test orders show up immediately.
           if (!['cancelled', 'failed', 'refunded', 'trash'].contains(status)) {
-            todayRevenue += double.tryParse(order['total']?.toString() ?? '0') ?? 0.0;
-            ordersToday += 1;
-            
-            // Calculate items sold
-            if (order['line_items'] != null && order['line_items'] is List) {
-              for (var item in (order['line_items'] as List)) {
-                itemsSold += int.tryParse(item['quantity']?.toString() ?? '0') ?? 0;
+            // Robust UTC -> Local timezone parsing
+            DateTime? orderDate;
+            final gmtStr = order['date_created_gmt']?.toString();
+            if (gmtStr != null && gmtStr.isNotEmpty) {
+              final formattedGmt = gmtStr.endsWith('Z') || gmtStr.contains('+') ? gmtStr : '${gmtStr}Z';
+              orderDate = DateTime.tryParse(formattedGmt)?.toLocal();
+            }
+            if (orderDate == null) {
+              final localStr = order['date_created']?.toString();
+              if (localStr != null && localStr.isNotEmpty) {
+                orderDate = DateTime.tryParse(localStr);
+              }
+            }
+
+            // Strictly check if order falls on today's calendar date in device local timezone
+            if (orderDate != null &&
+                orderDate.year == now.year &&
+                orderDate.month == now.month &&
+                orderDate.day == now.day) {
+              todayRevenue += double.tryParse(order['total']?.toString() ?? '0') ?? 0.0;
+              ordersToday += 1;
+              
+              // Calculate items sold
+              if (order['line_items'] != null && order['line_items'] is List) {
+                for (var item in (order['line_items'] as List)) {
+                  itemsSold += int.tryParse(item['quantity']?.toString() ?? '0') ?? 0;
+                }
               }
             }
           }
