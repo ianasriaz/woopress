@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:dio/dio.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
@@ -103,17 +103,27 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
     final storage = ref.read(secureStorageProvider);
     final baseUrl = await storage.read(key: 'baseUrl');
 
-    // Live Tracker Verification
-    bool trackerActive = false;
+    // Live connector verification via the plugin's public health endpoint.
+    bool connectorActive = false;
+    String connectorVersion = '';
     try {
       final dio = Dio();
       final domain = await storage.read(key: 'store_domain');
       if (domain != null) {
-        final res = await dio.get('https://$domain/wp-json/woopress/v1/stats').timeout(const Duration(seconds: 3));
-        if (res.statusCode == 200) trackerActive = true;
+        final res = await dio.get('https://$domain/wp-json/woopress/v1/health').timeout(const Duration(seconds: 3));
+        if (res.statusCode == 200 && res.data is Map && res.data['status'] == 'success') {
+          connectorActive = true;
+          final diagnostics = res.data['diagnostics'];
+          if (diagnostics is Map) {
+            final version = diagnostics['version']?.toString();
+            if (version != null && version.isNotEmpty) {
+              connectorVersion = version;
+            }
+          }
+        }
       }
     } catch (_) {
-      trackerActive = false;
+      connectorActive = false;
     }
 
     if (!mounted) return;
@@ -130,7 +140,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> with WidgetsB
           children: [
             _buildInfoRow("STORE URL", baseUrl ?? "Not Found"),
             const SizedBox(height: 16),
-            _buildInfoRow("TRACKER STATUS", trackerActive ? "Active (Genuine)" : "Not Found (Paste Script)"),
+            _buildInfoRow("CONNECTOR STATUS", connectorActive ? (connectorVersion.isEmpty ? "Active" : "Active (v$connectorVersion)") : "Not Found (Install the WooPress Connector)"),
             const SizedBox(height: 16),
             Container(
               padding: const EdgeInsets.all(12),

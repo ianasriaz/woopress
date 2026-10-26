@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
@@ -1085,13 +1085,40 @@ class _OrderCard extends ConsumerWidget {
 
   void _confirmCancel(BuildContext context, WidgetRef ref, int orderId) {
     HapticFeedback.vibrate();
+    final reasonController = TextEditingController();
+
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: Theme.of(context).colorScheme.surface,
         shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
         title: Text("CANCEL ORDER", style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontWeight: FontWeight.w900)),
-        content: Text("Are you sure you want to cancel this order? This cannot be undone.", style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7))),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text("Are you sure you want to cancel this order? This cannot be undone.", style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7))),
+            const SizedBox(height: 20),
+            TextField(
+              controller: reasonController,
+              maxLength: 200,
+              maxLines: 2,
+              minLines: 1,
+              textCapitalization: TextCapitalization.sentences,
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurface, fontSize: 14),
+              decoration: InputDecoration(
+                labelText: "Reason (optional)",
+                hintText: "e.g. Out of stock",
+                counterText: "",
+                isDense: true,
+                labelStyle: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6)),
+                border: const OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text("Shown to the customer in the cancellation email.", style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5), fontSize: 11)),
+          ],
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
@@ -1099,14 +1126,14 @@ class _OrderCard extends ConsumerWidget {
           ),
           TextButton(
             onPressed: () {
-              ref.read(ordersControllerProvider.notifier).updateStatus(orderId, 'cancelled');
+              ref.read(ordersControllerProvider.notifier).updateStatus(orderId, 'cancelled', cancelReason: reasonController.text);
               Navigator.pop(ctx);
             },
             child: const Text("YES, CANCEL", style: TextStyle(color: Color(0xFFFF3B30), fontWeight: FontWeight.w900)),
           ),
         ],
       ),
-    );
+    ).whenComplete(reasonController.dispose);
   }
 
   void _showTrackingDialog(BuildContext context, WidgetRef ref, int orderId) {

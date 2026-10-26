@@ -93,6 +93,34 @@ Do **NOT** put network logic inside UI files. All data must flow: `API/Cache -> 
 - **Executive SaaS Geometry:** Upgraded `_OrderCard` geometry to a modern 12px rounded profile (`BorderRadius.circular(12)`) with subtle surface contrast borders and consistent 8px radius action tiles for Phone, WhatsApp, and Status updates.
 - **Universal Timezone-Aware Today's Sales Calculation:** In `dashboard_repository.dart`, querying today's live orders is now anchored to UTC (`startOfTodayUtc = DateTime(now.year, now.month, now.day).toUtc()`) while each order's `date_created_gmt` is parsed as UTC and converted to the device's local timezone (`.toLocal()`). Orders are strictly validated against `now.year`, `now.month`, and `now.day`, preventing orders created yesterday from bleeding into today's sales across any worldwide timezone.
 
+### WooPress Platform Consolidation (Phase 1: Conventions & Ownership)
+- **Implementation:** Established a single-ownership model to stop app-integration features from being duplicated across the app, the Connector plugin, and the two client themes (KTF, 3Clothing).
+- **Canonical doc:** `PLATFORM.md` in the WooPress Connector plugin repository defines the ownership matrix, frozen endpoint/field contracts, and a "where does this code go?" decision tree.
+- **Boundary:** The **plugin** owns FCM push, visitor stats (`/wp-json/woopress/v1/stats`), health + `wc/v3/woopress-dashboard`, SMTP config, custom emails, stock sync/cache purge, `woopress_update_count`, and attribution meta. The **themes** own storefront rendering only. The **app** owns UI/offline cache and depends only on WooCommerce REST + plugin endpoints.
+- **Dependency rule:** All data still flows `API/Cache -> Repository -> Riverpod Controller -> UI`; defensively handle a missing `woopress_update_count` (model default `1`).
+
+### WooPress Platform Consolidation (Phase 2: Connector Feature Parity)
+- **Implementation:** Moved the remaining app-integration features into the WooPress Connector plugin (v2.1.0), so the app no longer depends on any client theme for them.
+- **`woopress_update_count`:** The plugin now registers `woopress_update_count` as a REST field on `product` and `product_variation` (backed by `_woopress_update_count`, incremented on REST updates, initialised to `1` on create). The inventory screen's modification counters are now server-authoritative; the app's default of `1` remains a safe fallback.
+- **Atomic stock sync:** Setting a managed product to `outofstock` also zeroes its quantity (prevents WooCommerce reverting to `instock`); variation status bubbles to the parent variable product (`sync_stock_status`); product/variation caches are purged on every mutation.
+- **Emergency SMTP fallback & order attribution:** Both now live in the plugin. Attribution is written to `_wc_order_attribution_*` / `_custom_order_source`, which `OrderModel.fromJson` reads for the `SourceBadge`.
+
+### WooPress Platform Consolidation (Phase 3 & 4: Themes Retired, App Aligned)
+- **Phase 3 (client themes):** KTF and 3Clothing no longer own platform features. Both visitor trackers and their dead `woofly/*` endpoints were removed, and the theme-side SMTP, order-attribution, cache-invalidation, and emergency-mail callbacks now short-circuit when the connector plugin's functions are present (`function_exists('woopress_connector_*')`). Behaviour is unchanged until the plugin's v2.1.0 code executes, so there is no outage window.
+- **Phase 4 (this app):** `woopress_update_count` needed no change — it is already requested in `_fields` and parsed with a `1` fallback (`product_model.dart`), and the plugin now returns real values (unknown `_fields` entries are simply omitted when the plugin is absent, so older stores are unaffected). The connection-details dialog (`dashboard_screen.dart` → `_showConnectionInfo`) now probes the plugin's public `/wp-json/woopress/v1/health` instead of `/stats` and displays the deployed connector version (e.g. `Active (v2.1.0)`), making rollouts verifiable from inside the app.
+- **Deliberately NOT adopted:** `wc/v3/woopress-dashboard` is *not* used for dashboard stats. Its "today" window is computed in UTC (`gmdate`) server-side, whereas this app anchors daily revenue to the device's local calendar day (the universal timezone fix above). Adopting it would regress those numbers, so the client-side `/reports/sales` + live-orders path stays authoritative.
+
+### Icon Package Migration: `lucide_icons` → `lucide_icons_flutter` (2026-10-25)
+- **Why:** `lucide_icons` (last release 0.257.0, June 2023) declares `class LucideIconData extends IconData`, and `IconData` became a **final class in Flutter 3.44 / Dart 3.12**. The package is abandoned, so there is no version to upgrade to and the app could not be compiled on current Flutter stable.
+- **Fix:** Replaced it with the maintained fork **`lucide_icons_flutter: ^4.0.1`** in `pubspec.yaml`, and updated the import in the 10 files that reference it. The fork keeps the same `LucideIcons` class and ships all 52 icons this app uses (verified name-by-name).
+- **Toolchain:** Flutter 3.47.8 (stable) / Dart 3.13.7. Do **not** work around this by pinning Flutter below 3.44 — the fork removes that constraint.
+- **Verification:** `flutter analyze` → 0 errors; `flutter build web --release` → built successfully (Lucide font tree-shaken 930 KB → 17.9 KB).
+- **Note:** running `flutter pub get` under Flutter 3.47 also added an `analyzer.exclude` block to `analysis_options.yaml` (build/ and platform dirs) and refreshed `pubspec.lock` transitive versions; both are toolchain-driven, not hand edits.
+
+### Cancelled-Order Email + Cancellation Reason (plugin 2.2.0)
+- **Plugin side:** `includes/emails/class-wc-custom-cancelled-email.php` sends a quiet customer email when an order becomes `cancelled` (hook: `woocommerce_order_status_changed`). It carries no tracking, totals or address, and renders `_woopress_cancel_reason` when present. A `_woopress_cancelled_email_sent` meta (written via `save_meta_data()`, so no order re-save) guarantees one send per order.
+- **App side:** the cancel confirmation dialog now takes an optional **Reason** (`orders_screen.dart` → `_confirmCancel`), which flows through `OrdersController.updateStatus(..., cancelReason:)` into `OrdersRepository.updateOrderStatus()`, where it is appended to the same `PUT /wp-json/wc/v3/orders/{id}` payload as `_woopress_cancel_reason`. Because the offline queue stores the whole payload, a cancel made offline keeps its reason when it syncs.
+
 ## 4. Instructions for Future AI Agents
 1. **Never Duplicate Offline Logic:** If you need to make a new feature work offline, extend `database_helper.dart` and `sync_service.dart`. Do not create a new database engine.
 2. **Web Compatibility:** Always remember this app is tested via `flutter run -d chrome`. Any new native packages (hardware, cameras, DBs) must check `if (kIsWeb)` to avoid crashing the debugging session.

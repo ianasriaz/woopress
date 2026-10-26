@@ -124,7 +124,7 @@ class OrdersController extends AsyncNotifier<OrdersState> {
     }
   }
 
-  Future<void> updateStatus(int orderId, String status, {String? trackingNumber, String? trackingCourier}) async {
+  Future<void> updateStatus(int orderId, String status, {String? trackingNumber, String? trackingCourier, String? cancelReason}) async {
     final current = state.value;
     if (current == null) return;
 
@@ -146,7 +146,7 @@ class OrdersController extends AsyncNotifier<OrdersState> {
 
     try {
       final repo = ref.read(ordersRepositoryProvider);
-      await repo.updateOrderStatus(orderId, status, trackingNumber: trackingNumber, trackingCourier: trackingCourier);
+      await repo.updateOrderStatus(orderId, status, trackingNumber: trackingNumber, trackingCourier: trackingCourier, cancelReason: cancelReason);
       
       // Auto-refresh dashboard after status change to update sales stats instantly
       ref.read(dashboardControllerProvider.notifier).refresh();

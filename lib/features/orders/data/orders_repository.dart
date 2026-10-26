@@ -68,13 +68,16 @@ class OrdersRepository {
     return cachedOrders;
   }
 
-  Future<void> updateOrderStatus(int orderId, String status, {String? trackingNumber, String? trackingCourier}) async {
+  Future<void> updateOrderStatus(int orderId, String status, {String? trackingNumber, String? trackingCourier, String? cancelReason}) async {
     final data = <String, dynamic>{'status': status};
-    if (trackingNumber != null || trackingCourier != null) {
-      data['meta_data'] = [
-        if (trackingNumber != null && trackingNumber.isNotEmpty) {'key': '_tracking_number', 'value': trackingNumber},
-        if (trackingCourier != null && trackingCourier.isNotEmpty) {'key': '_tracking_courier', 'value': trackingCourier},
-      ];
+
+    final meta = <Map<String, dynamic>>[
+      if (trackingNumber != null && trackingNumber.isNotEmpty) {'key': '_tracking_number', 'value': trackingNumber},
+      if (trackingCourier != null && trackingCourier.isNotEmpty) {'key': '_tracking_courier', 'value': trackingCourier},
+      if (cancelReason != null && cancelReason.trim().isNotEmpty) {'key': '_woopress_cancel_reason', 'value': cancelReason.trim()},
+    ];
+    if (meta.isNotEmpty) {
+      data['meta_data'] = meta;
     }
 
     // 1. Optimistic Update in Local DB
