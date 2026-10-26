@@ -873,12 +873,14 @@ class _OrderCard extends ConsumerWidget {
                       final isUpdating = ref.watch(ordersControllerProvider).value?.updatingOrderIds.contains(order.id) ?? false;
                       final isCompleted = order.status == 'completed';
                       final isCancelled = order.status == 'cancelled';
+                      final isOnHold = order.status == 'on-hold';
 
                       final Color btnBgColor;
                       final Border? btnBorder;
                       final Color contentColor;
                       final IconData btnIcon;
                       final String btnText;
+                      final bool solid;
 
                       if (isCompleted) {
                         btnBgColor = const Color(0xFF34C759);
@@ -886,18 +888,28 @@ class _OrderCard extends ConsumerWidget {
                         contentColor = Colors.white;
                         btnIcon = LucideIcons.checkCircle;
                         btnText = "SHIPPED";
+                        solid = true;
                       } else if (isCancelled) {
-                        btnBgColor = const Color(0xFFFF3B30).withValues(alpha: 0.12);
-                        btnBorder = Border.all(color: const Color(0xFFFF3B30).withValues(alpha: 0.3));
-                        contentColor = const Color(0xFFFF3B30);
+                        btnBgColor = const Color(0xFFFF3B30);
+                        btnBorder = null;
+                        contentColor = Colors.white;
                         btnIcon = LucideIcons.xCircle;
                         btnText = "CANCELLED";
+                        solid = true;
+                      } else if (isOnHold) {
+                        btnBgColor = const Color(0xFFFFF6DA);
+                        btnBorder = Border.all(color: const Color(0xFFEBD9A6));
+                        contentColor = const Color(0xFF8A6A00);
+                        btnIcon = LucideIcons.pauseCircle;
+                        btnText = "ON HOLD";
+                        solid = false;
                       } else {
                         btnBgColor = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.06);
                         btnBorder = Border.all(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.15));
                         contentColor = Theme.of(context).colorScheme.onSurface;
                         btnIcon = LucideIcons.edit3;
                         btnText = order.status.replaceAll('-', ' ').toUpperCase();
+                        solid = false;
                       }
 
                       return Container(
@@ -924,7 +936,7 @@ class _OrderCard extends ConsumerWidget {
                                 children: [
                                   Icon(
                                     btnIcon,
-                                    color: isCompleted ? Colors.white : contentColor.withValues(alpha: isCancelled ? 1.0 : 0.8),
+                                    color: solid ? Colors.white : contentColor.withValues(alpha: 0.9),
                                     size: 16,
                                   ),
                                   const SizedBox(width: 10),
@@ -1268,6 +1280,7 @@ class _StatusChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final isCompleted = status == 'completed';
     final isCancelled = status == 'cancelled';
+    final isOnHold = status == 'on-hold';
 
     final Color color;
     final Color bgColor;
@@ -1279,8 +1292,12 @@ class _StatusChip extends StatelessWidget {
       borderColor = const Color(0xFF34C759).withValues(alpha: 0.4);
     } else if (isCancelled) {
       color = const Color(0xFFFF3B30);
-      bgColor = const Color(0xFFFF3B30).withValues(alpha: 0.12);
-      borderColor = const Color(0xFFFF3B30).withValues(alpha: 0.3);
+      bgColor = const Color(0xFFFF3B30).withValues(alpha: 0.15);
+      borderColor = const Color(0xFFFF3B30).withValues(alpha: 0.4);
+    } else if (isOnHold) {
+      color = const Color(0xFF8A6A00);
+      bgColor = const Color(0xFFFFF6DA);
+      borderColor = const Color(0xFFEBD9A6);
     } else {
       color = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.75);
       bgColor = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.06);
