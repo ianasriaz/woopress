@@ -14,8 +14,10 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 
 import '../../../../core/widgets/global_error_view.dart';
 import '../../../../core/widgets/empty_state_view.dart';
+import '../../../../core/widgets/pressable.dart';
 import '../../../../core/database/database_helper.dart';
 import '../../../../core/widgets/shimmer_loading.dart';
+import '../widgets/status_filter_bar.dart';
 
 final connectivityStreamProvider = StreamProvider<List<ConnectivityResult>>((ref) {
   return Connectivity().onConnectivityChanged;
@@ -50,13 +52,6 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
   String _searchQuery = "";
   String _selectedStatus = "all";
 
-  final List<Map<String, String>> _statusFilters = [
-    {"id": "all", "label": "ALL"},
-    {"id": "processing", "label": "PROCESSING"},
-    {"id": "on-hold", "label": "ON HOLD"},
-    {"id": "completed", "label": "COMPLETED"},
-    {"id": "cancelled", "label": "CANCELLED"},
-  ];
   bool _didOpenInitialOrder = false;
   bool _isRefreshing = false;
 
@@ -252,47 +247,12 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
 
   Widget _buildStatusFilters() {
     final state = ref.watch(ordersControllerProvider).value;
-    final currentStatus = state?.status ?? 'all';
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Container(
-        height: 30, // Reduced height for professional look
-        margin: const EdgeInsets.only(bottom: 12),
-        child: Row(
-          children: _statusFilters.map((filter) {
-            final isSelected = currentStatus == filter['id'];
-            return Expanded(
-              child: GestureDetector(
-                onTap: () {
-                  HapticFeedback.lightImpact();
-                  setState(() => _selectedStatus = filter['id']!);
-                  ref.read(ordersControllerProvider.notifier).onFilter(filter['id']!);
-                },
-                child: Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 2),
-                  decoration: BoxDecoration(
-                    color: isSelected ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.surface,
-                    borderRadius: BorderRadius.circular(2),
-                    border: Border.all(color: Theme.of(context).dividerColor), // Fixed border
-                  ),
-                  child: Center(
-                    child: Text(
-                      filter['label']!,
-                      style: TextStyle(
-                        color: isSelected ? Theme.of(context).colorScheme.onPrimary : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.3),
-                        fontSize: 7.5,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            );
-          }).toList(),
-        ),
-      ),
+    return StatusFilterBar(
+      currentStatus: state?.status ?? 'all',
+      onSelected: (id) {
+        setState(() => _selectedStatus = id);
+        ref.read(ordersControllerProvider.notifier).onFilter(id);
+      },
     );
   }
 
@@ -960,8 +920,8 @@ class _OrderCard extends ConsumerWidget {
               ),
               if (order.billing.phone.isNotEmpty) ...[
                 const SizedBox(width: 8),
-                GestureDetector(
-                  onTap: () => launchUrl(Uri.parse("tel:${order.billing.phone}")),
+                Pressable(
+                  onTap: () => _openDialer(context, order),
                   child: Container(
                     height: 48,
                     width: 48,
@@ -976,8 +936,8 @@ class _OrderCard extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                GestureDetector(
-                  onTap: () => _launchWhatsApp(order),
+                Pressable(
+                  onTap: () => _openWhatsApp(context, order),
                   child: Container(
                     height: 48,
                     width: 48,
@@ -1270,6 +1230,34 @@ class _OrderCard extends ConsumerWidget {
       return "";
     }
   }
+
+  /// Dismisses any running toast first so rapid repeated taps on contact
+  /// buttons don't stack a queue of snackbars.
+  void _showActionToast(BuildContext context, String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message), duration: const Duration(seconds: 2)));
+  }
+
+  Future<void> _openDialer(BuildContext context, OrderModel order) async {
+    // Keep digits plus an optional leading '+' for international numbers;
+    // anything else picked up from billing text must never reach a tel: URL.
+    final digits = order.billing.phone.replaceAll(RegExp(r'[^\d+]'), '');
+    if (digits.replaceAll('+', '').length < 7) return;
+
+    _showActionToast(context, 'Opening dial pad…');
+    bool opened = false;
+    try {
+      opened = await launchUrl(Uri(scheme: 'tel', path: digits), mode: LaunchMode.externalApplication);
+    } catch (_) {}
+    if (!opened && context.mounted) _showActionToast(context, "Couldn't open dial pad");
+  }
+
+  Future<void> _openWhatsApp(BuildContext context, OrderModel order) async {
+    _showActionToast(context, 'Opening WhatsApp…');
+    final opened = await _launchWhatsApp(order);
+    if (!opened && context.mounted) _showActionToast(context, "Couldn't open WhatsApp");
+  }
 }
 
 class _StatusChip extends StatelessWidget {
@@ -1323,11 +1311,11 @@ class _StatusChip extends StatelessWidget {
   }
 }
 
-void _launchWhatsApp(OrderModel order) async {
+Future<bool> _launchWhatsApp(OrderModel order) async {
   String phone = order.billing.phone;
   // Remove all non-digit characters
   String sanitizedPhone = phone.replaceAll(RegExp(r'\D'), '');
-  if (sanitizedPhone.isEmpty) return;
+  if (sanitizedPhone.isEmpty) return false;
   
   // Handle leading '00' (often used instead of '+')
   if (sanitizedPhone.startsWith('00')) {
@@ -1372,23 +1360,26 @@ Please confirm your order by replying to this message. Thank you!""";
     try {
       final w4bUrl = "intent://send?phone=$sanitizedPhone&text=$encodedMessage#Intent;package=com.whatsapp.w4b;scheme=whatsapp;end";
       if (await launchUrl(Uri.parse(w4bUrl), mode: LaunchMode.externalApplication)) {
-        return;
+        return true;
       }
     } catch (_) {}
     
     try {
       final waUrl = "intent://send?phone=$sanitizedPhone&text=$encodedMessage#Intent;package=com.whatsapp;scheme=whatsapp;end";
       if (await launchUrl(Uri.parse(waUrl), mode: LaunchMode.externalApplication)) {
-        return;
+        return true;
       }
     } catch (_) {}
   }
 
   final url = "https://wa.me/$sanitizedPhone?text=$encodedMessage";
-  
-  if (await canLaunchUrl(Uri.parse(url))) {
-    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-  }
+
+  try {
+    if (await canLaunchUrl(Uri.parse(url))) {
+      return await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    }
+  } catch (_) {}
+  return false;
 }
 
 class _InlineSource extends StatelessWidget {
